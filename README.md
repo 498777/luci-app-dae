@@ -15,6 +15,20 @@ OpenWrt 上 [dae](https://github.com/daeuniverse/dae)（eBPF 透明代理）的�
 - geo 数据拆为 `dae-geoip` / `dae-geosite`（软链 `/usr/share/dae`，兼容新旧默认目录）；
 - x86_64 包内二进制按 **GOAMD64=v3** 编译（包架构仍为 `x86_64`）。
 
+## 一键安装
+
+```sh
+curl -fsSL "https://raw.githubusercontent.com/498777/luci-app-dae/main/Auto_Install_Script.sh" | sh -s luci-app-dae
+```
+
+- 默认装全套：`dae` + `dae-geoip` + `dae-geosite` + `luci-app-dae` + 中文语言包；
+- 只装主程序与 geo 数据、不带 LuCI：`sh -s dae dae-geoip dae-geosite`；
+- 脚本行为：非 apk 体系直接退出；未发现内核 BTF 时给出提示；若包内仍声明
+  `vmlinux-btf` 会自动拆包剔除后安装；装完自动刷新 LuCI 缓存；
+- 其它参数（`--repo` 换仓库、`--keep-dep` 原样安装）见脚本头部注释。
+
+> 需要 Release 已包含 geo 子包与 luci-app-dae 1.1.0（r2 起）才能装到完整产物。
+
 ## LuCI 界面（模块化，同 honk）
 
 安装后 **服务 → DAE** 下五个页签，配置拆分、每页带 CodeMirror 编辑器与 Reload 按钮：
