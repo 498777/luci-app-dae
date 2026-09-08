@@ -10,7 +10,7 @@ on:
       packages:
         description: '要编译的包，空格分隔'
         required: false
-        default: 'dae dae-geoip dae-geosite luci-app-dae'
+        default: 'luci-app-dae'
   push:
     branches:
       - main
@@ -41,7 +41,7 @@ jobs:
           pkg_version=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
           pkg_release=$(grep '^PKG_RELEASE:=' dae/Makefile | head -n 1 | cut -d= -f2)
           sdk="${{ inputs.sdk || 'openwrt-25.12' }}"
-          packages="${{ inputs.packages || 'dae dae-geoip dae-geosite luci-app-dae' }}"
+          packages="${{ inputs.packages || 'luci-app-dae' }}"
 
           version="${pkg_version}-r${pkg_release}"
           echo "version=${version}"                >> "$GITHUB_OUTPUT"
