@@ -148,6 +148,35 @@ jobs:
           path: release-dist
           merge-multiple: true
 
+      - name: Deduplicate noarch packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-dist
+          # noarch 包（luci-app-dae / dae-geoip / dae-geosite / luci-i18n-*）在 rename
+          # 阶段被两个 job 各自追加了 -x86_64v3 / -aarch64 后缀，内容完全相同。
+          # 仅当同一 basename 去掉后缀后「两种后缀的包都出现」才判定为重复：
+          # 合并成单个原始名文件；架构包只有一种后缀，不会被误伤。
+          SUFFIXES="x86_64v3 aarch64"
+          for s1 in $SUFFIXES; do
+            for f in *-${s1}.apk; do
+              [ -e "$f" ] || continue
+              key="${f%-${s1}.apk}"
+              for s2 in $SUFFIXES; do
+                [ "$s1" = "$s2" ] && continue
+                twin="${key}-${s2}.apk"
+                if [ -f "$twin" ]; then
+                  mv -f "$f" "${key}.apk"
+                  rm -f "$twin"
+                  echo "dedupe: ${key}.apk"
+                  break
+                fi
+              done
+            done
+          done
+          echo "=== release files after dedupe ==="
+          ls -1
+
       - name: Create or update GitHub release
         uses: softprops/action-gh-release@v2
         with:
