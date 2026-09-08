@@ -78,6 +78,8 @@ apk add v2ray-geoip v2ray-geosite
 
 推送 `main`，或在 **Actions → Build apk → Run workflow** 手动触发（SDK 默认
 `openwrt-25.12`）。Release 生成 `dae_<version>`（如 `dae_2026.09.08-r3`）并附 apk。
+每次发布前会自动清空该 tag 的旧附件并对 noarch 包（luci / 语言包）去重，Release 里
+只保留当前这套产物。
 源码树编译：
 
 ```sh
