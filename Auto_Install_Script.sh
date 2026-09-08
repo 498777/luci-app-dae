@@ -1,11 +1,9 @@
 #!/bin/sh
 
 REPO="${REPO:-498777/luci-app-dae}"
-
 STRIP_DEPS="vmlinux-btf"
-WANT_GEO=0
 LANGS="zh-cn zh_Hans zh_cn"
-
+WANT_GEO=0
 TMPDIR_WORK="${TMPDIR:-/tmp}/dae-install.$$"
 PKGS=""
 
@@ -17,6 +15,7 @@ usage() {
 参数：
   --repo <OWNER/REPO>   指定 Release 所在仓库（也可 export REPO=... 后运行）
   --repo=<OWNER/REPO>   同上
+  --force               版本相同时也强制重装
   --geo                 同时从官方源安装 v2ray-geoip / v2ray-geosite（配置里用到 geoip:/geosite: 时才需要）
   --keep-dep            不剔除 vmlinux-btf 依赖，原样安装
   -h, --help            显示本帮助
@@ -26,7 +25,7 @@ usage() {
 示例：
   curl -fsSL .../Auto_Install_Script.sh | sh -s
   curl -fsSL .../Auto_Install_Script.sh | sh -s dae
-  curl -fsSL .../Auto_Install_Script.sh | sh -s -- --geo luci-app-dae
+  curl -fsSL .../Auto_Install_Script.sh | sh -s -- --force
   curl -fsSL .../Auto_Install_Script.sh | sh -s -- --repo someone/luci-app-dae
 EOF
     exit 0
@@ -40,6 +39,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --repo|-r)     REPO="$2"; shift 2 ;;
         --repo=*)      REPO="${1#--repo=}"; shift ;;
+        --force)       FORCE=1; shift ;;
         --geo)         WANT_GEO=1; shift ;;
         --keep-dep)    STRIP_DEPS=""; shift ;;
         -h|--help)     usage ;;
@@ -48,7 +48,7 @@ while [ $# -gt 0 ]; do
 done
 
 echo "╔══════════════════════════════════════════════╗"
-echo "║   luci-app-dae 一键安装（apk）               ║"
+echo "║   luci-app-dae 一键安装（apk）              ║"
 echo "╚══════════════════════════════════════════════╝"
 
 case "$REPO" in
@@ -59,7 +59,7 @@ esac
 echo "仓库: https://github.com/$REPO"
 
 command -v curl >/dev/null 2>&1 || die "缺少 curl，请先安装：apk add curl"
-command -v apk  >/dev/null 2>&1 || die "未检测到 apk。本仓库只发布 apk 包，请使用 OpenWrt 25.x 的 apk 体系固件。"
+command -v apk  >/dev/null 2>&1 || die "未检测到 apk。本仓库只发布 apk 包，请使用 OpenWrt 24.10+ / 25.x 的 apk 体系固件。"
 
 ARCH=$(apk --print-arch 2>/dev/null)
 [ -n "$ARCH" ] || die "无法获取系统架构（apk --print-arch 失败）"
@@ -67,15 +67,64 @@ echo "架构: $ARCH"
 
 if [ ! -f /sys/kernel/btf/vmlinux ]; then
     echo "⚠ 未发现 /sys/kernel/btf/vmlinux：当前内核可能未开启 CONFIG_DEBUG_INFO_BTF。"
-    echo "  dae 仍能装上，但无法启动。请换用带 BTF 的内核（如官方 25.x 默认配置）。"
+    echo "  dae 仍能装上，但无法启动。请换用带 BTF 的内核（如官方 24.10+ 默认配置）。"
 fi
 
-info "查询 Release ..."
-API="https://api.github.com/repos/${REPO}/releases?per_page=5"
-DATA=$(curl -fsSL --max-time 30 "$API") || die "GitHub API 请求失败，请检查网络或仓库名是否正确"
-URLS=$(echo "$DATA" | grep -o 'https://[^"]*\.apk' | sort -u)
-[ -n "$URLS" ] || die "该仓库 Release 中没有找到 .apk 文件"
+# ------------------------------------------------------- 获取最新 Release（不走 GitHub API，避免限流 403）
+info "查询最新 Release ..."
 
+get_latest_tag() {
+    loc=$(curl -fsSI --max-time 20 "https://github.com/$REPO/releases/latest" 2>/dev/null \
+        | tr -d '\r' | sed -n 's#^[Ll]ocation: .*/releases/tag/##p')
+    if [ -z "$loc" ]; then
+        page=$(curl -fsSL --max-time 30 "https://github.com/$REPO/releases" 2>/dev/null)
+        loc=$(printf '%s' "$page" | grep -oE '/releases/tag/[^"?]+' | head -1 | sed 's#.*/tag/##')
+    fi
+    [ -n "$loc" ] || return 1
+    printf '%s' "$loc"
+}
+
+list_assets() {
+    tag="$1"
+    curl -fsSL --max-time 30 "https://github.com/$REPO/releases/expanded_assets/$tag" 2>/dev/null \
+        | grep -oE "href=\"/$REPO/releases/download/$tag/[^\"]+\.apk\"" \
+        | sed "s#^href=\"/#https://github.com/#; s#\"\$##" | sort -u
+}
+
+TAG=$(get_latest_tag) || die "获取 Release 失败，请检查网络或仓库名是否正确"
+echo "最新版本: $TAG"
+URLS=$(list_assets "$TAG")
+[ -n "$URLS" ] || die "Release $TAG 中没有找到 .apk 文件"
+
+# ----------------------------------------------------------- 版本工具
+strip_arch_suffix() {
+    v="$1"
+    for a in "$ARCH" x86_64 x86_64v3 aarch64 aarch64_generic all noarch; do
+        case "$v" in *"-$a") v="${v%-$a}" ;; esac
+    done
+    printf '%s' "$v"
+}
+
+asset_ver() {
+    f=$(basename "$1")
+    n=$(basename "$2")
+    f=${f%.apk}
+    v=${f#"$n"-}
+    strip_arch_suffix "$v"
+}
+
+apk_installed_ver() {
+    apk list --installed 2>/dev/null | awk -v p="$1-" -v a="$ARCH" '
+        $1 ~ "^" p {
+            v=$1; sub("^" p, "", v)
+            if (v ~ ("-" a "$")) v=substr(v,1,length(v)-length(a)-1)
+            n=split("x86_64 x86_64v3 aarch64 aarch64_generic all noarch", ar, " ")
+            for (i=1;i<=n;i++) if (v ~ ("-" ar[i] "$")) { v=substr(v,1,length(v)-length(ar[i])-1); break }
+            print v; exit
+        }'
+}
+
+# --------------------------------------------------------- 按名字挑选包
 select_pkg() {
     cands=$(echo "$URLS" | grep -E "/${1}[-_][^\"/]*\.apk$")
     [ -n "$cands" ] || return 1
@@ -92,6 +141,7 @@ plan_has() {
     return 1
 }
 
+# --------------------------------------------- 拆包剔除依赖后重新打包
 strip_apk_dep() {
     f="$1"
     [ -n "$STRIP_DEPS" ] || return 0
@@ -171,10 +221,12 @@ install_url() {
     return 0
 }
 
+# --------------------------------------------------------- 计算待装清单（带版本检测）
 add_pkg() {
     u=$(select_pkg "$1") || u=""
     if [ -n "$u" ]; then
         PLAN="$PLAN $u"
+        PLAN_N="$PLAN_N $1"
     else
         echo "⚠ 未找到 $1 的 apk，跳过"
         return 1
@@ -184,36 +236,36 @@ add_pkg() {
 add_i18n() {
     for lang in $LANGS; do
         u=$(select_pkg "luci-i18n-dae-${lang}") || u=""
-        if [ -n "$u" ]; then PLAN="$PLAN $u"; return 0; fi
+        if [ -n "$u" ]; then PLAN="$PLAN $u"; PLAN_N="$PLAN_N luci-i18n-dae-${lang}"; return 0; fi
     done
     echo "⚠ 未找到中文语言包，界面将是英文"
     return 1
 }
 
 if [ -n "$PKGS" ]; then
-    PLAN=""
+    PLAN=""; PLAN_N=""
     want_luci=0
     for p in $PKGS; do
         [ "$p" = "luci-app-dae" ] && want_luci=1
         u=$(select_pkg "$p") || u=""
         [ -n "$u" ] || { echo "✗ 未找到 $p 的 apk，跳过"; continue; }
-        PLAN="$PLAN $u"
+        PLAN="$PLAN $u"; PLAN_N="$PLAN_N $p"
     done
     if [ "$want_luci" -eq 1 ]; then
-        PRE=""
-        if ! plan_has "^/dae-[0-9]"; then
+        PRE=""; PRE_N=""
+        if ! plan_has "/dae-"; then
             u=$(select_pkg dae) || u=""
-            [ -n "$u" ] && PRE="$PRE $u"
+            [ -n "$u" ] && { PRE="$PRE $u"; PRE_N="$PRE_N dae"; }
         fi
-        PLAN="$PRE$PLAN"
+        PLAN="$PRE$PLAN"; PLAN_N="$PRE_N$PLAN_N"
         if ! plan_has "/luci-app-dae"; then
             u=$(select_pkg luci-app-dae) || u=""
-            [ -n "$u" ] && PLAN="$PLAN $u"
+            [ -n "$u" ] && { PLAN="$PLAN $u"; PLAN_N="$PLAN_N luci-app-dae"; }
         fi
         add_i18n
     fi
 else
-    PLAN=""
+    PLAN=""; PLAN_N=""
     add_pkg dae
     add_pkg luci-app-dae
     add_i18n
@@ -222,12 +274,35 @@ fi
 [ -n "$PLAN" ] || die "没有可安装的包"
 
 echo ""
+echo "版本检查："
+echo "  本地已装  vs  最新 Release"
+DO_PLAN=""; DO_N=""
+for u in $PLAN; do
+    n=$(echo "$PLAN_N" | awk '{print $1}'); PLAN_N=$(echo "$PLAN_N" | sed 's/^[^ ]* *//')
+    newv=$(asset_ver "$u" "$n")
+    oldv=$(apk_installed_ver "$n")
+    if [ -n "$oldv" ]; then
+        if [ "$oldv" = "$newv" ] && [ "$FORCE" -eq 0 ]; then
+            echo "  · $n  $oldv == $newv  已是最新，跳过"
+            continue
+        else
+            echo "  · $n  $oldv → $newv"
+        fi
+    else
+        echo "  · $n  未安装 → $newv"
+    fi
+    DO_PLAN="$DO_PLAN $u"; DO_N="$DO_N $n"
+done
+echo ""
+
+[ -n "$DO_PLAN" ] || { echo "✅ 所有包已是最新版本，无需操作（--force 可强制重装）"; exit 0; }
+
 echo "即将安装："
-for u in $PLAN; do echo "  · $(basename "$u")"; done
+for u in $DO_PLAN; do echo "  · $(basename "$u")"; done
 echo ""
 
 FAILED=""
-for u in $PLAN; do
+for u in $DO_PLAN; do
     install_url "$u" || FAILED="$FAILED $(basename "$u")"
 done
 
@@ -257,6 +332,5 @@ echo ""
 echo "下一步："
 echo "  1. LuCI 界面：服务 → DAE（若看不到请清浏览器缓存或重新登录）"
 echo "  2. 命令行启用：uci set dae.config.enabled=1; uci commit dae; /etc/init.d/dae start"
-echo "  3. 默认配置不含 geoip/geosite 引用；若配置里要用 geo 数据，请先安装：apk add v2ray-geoip v2ray-geosite"
-echo "  4. 首次使用请先在 Node Settings 页签（或 /etc/dae/config.d/node.dae）"
+echo "  3. 首次使用请先在 Node Settings 页签（或 /etc/dae/config.d/node.dae）"
 echo "     把示例节点/订阅替换成自己的，再启用服务，否则 dae validate 会拒绝启动"
