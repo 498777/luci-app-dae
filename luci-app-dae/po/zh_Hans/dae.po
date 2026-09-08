@@ -64,6 +64,12 @@ msgstr "日志"
 msgid "Clear logs"
 msgstr "清空日志"
 
+msgid "Scroll to bottom"
+msgstr "滚动到底部"
+
+msgid "Scroll to top"
+msgstr "滚动到顶部"
+
 msgid "Memory Usage"
 msgstr "内存占用"
 
