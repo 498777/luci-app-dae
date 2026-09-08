@@ -3,7 +3,6 @@
 REPO="${REPO:-498777/luci-app-dae}"
 STRIP_DEPS="vmlinux-btf"
 LANGS="zh-cn zh_Hans zh_cn"
-WANT_GEO=0
 TMPDIR_WORK="${TMPDIR:-/tmp}/dae-install.$$"
 PLANFILE="/tmp/dae-plan.$$"
 DECIDED="/tmp/dae-decide.$$"
@@ -18,7 +17,6 @@ usage() {
   --repo <OWNER/REPO>   指定 Release 所在仓库（也可 export REPO=... 后运行）
   --repo=<OWNER/REPO>   同上
   --force               版本相同时也强制重装
-  --geo                 同时从官方源安装 v2ray-geoip / v2ray-geosite（配置里用到 geoip:/geosite: 时才需要）
   --keep-dep            不剔除 vmlinux-btf 依赖，原样安装
   -h, --help            显示本帮助
   <包名>...             指定要装的包，留空则装 dae + luci-app-dae + 中文语言包
@@ -41,7 +39,6 @@ while [ $# -gt 0 ]; do
         --repo|-r)     REPO="$2"; shift 2 ;;
         --repo=*)      REPO="${1#--repo=}"; shift ;;
         --force)       FORCE=1; shift ;;
-        --geo)         WANT_GEO=1; shift ;;
         --keep-dep)    STRIP_DEPS=""; shift ;;
         -h|--help)     usage ;;
         *)             PKGS="$PKGS $1"; shift ;;
@@ -300,18 +297,22 @@ while IFS='|' read -r u n; do
 done < "$DECIDED"
 rm -f "$PLANFILE" "$DECIDED"
 
-if [ "$WANT_GEO" -eq 1 ]; then
-    echo ""
-    info "从官方源安装 geo 数据（v2ray-geoip / v2ray-geosite）..."
-    if apk add v2ray-geoip v2ray-geosite 2>/dev/null; then
-        ok "geo 数据已安装"
-        mkdir -p /usr/share/dae
-        [ -f /usr/share/v2ray/geoip.dat ] && ln -sf /usr/share/v2ray/geoip.dat /usr/share/dae/geoip.dat
-        [ -f /usr/share/v2ray/geosite.dat ] && ln -sf /usr/share/v2ray/geosite.dat /usr/share/dae/geosite.dat
-        ok "已在 /usr/share/dae 建立 geo 软链"
-    else
-        echo "⚠ 官方源安装 geo 数据失败（可能未配置官方软件源），可稍后手动执行：apk add v2ray-geoip v2ray-geosite"
-    fi
+# 只要 /usr/share/v2ray 下有 geo 数据就为 dae 建软链（不代装 v2ray-geoip/geosite）
+mkdir -p /usr/share/dae
+linked=0
+if [ -f /usr/share/v2ray/geoip.dat ]; then
+    ln -sf /usr/share/v2ray/geoip.dat /usr/share/dae/geoip.dat
+    linked=1
+fi
+if [ -f /usr/share/v2ray/geosite.dat ]; then
+    ln -sf /usr/share/v2ray/geosite.dat /usr/share/dae/geosite.dat
+    linked=1
+fi
+if [ "$linked" -eq 1 ]; then
+    ok "已在 /usr/share/dae 建立 geo 软链"
+else
+    echo "⚠ 未发现 /usr/share/v2ray 下的 geo 数据。若规则用到 geoip:/geosite:，"
+    echo "  需先自行安装官方包：apk add v2ray-geoip v2ray-geosite（本脚本不代装），再重跑本脚本即可建链。"
 fi
 
 echo ""
@@ -330,6 +331,6 @@ echo ""
 echo "下一步："
 echo "  1. LuCI 界面：服务 → DAE（若看不到请清浏览器缓存或重新登录）"
 echo "  2. 命令行启用：uci set dae.config.enabled=1; uci commit dae; /etc/init.d/dae start"
-echo "  3. 默认配置含 geoip/geosite 规则，启用前请先安装 geo 数据：apk add v2ray-geoip v2ray-geosite（或用 --geo）"
+echo "  3. 若配置规则用到 geoip:/geosite:，需 /usr/share/v2ray 下有对应数据（官方 v2ray-geoip/geosite），脚本会自动建 /usr/share/dae 软链"
 echo "  4. 首次使用请先在 Node Settings 页签（或 /etc/dae/config.d/node.dae）"
 echo "     把示例节点/订阅替换成自己的，再启用服务，否则 dae validate 会拒绝启动"
