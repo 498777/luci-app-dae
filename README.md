@@ -93,6 +93,7 @@ uci 的 `dae.config.log_maxbackups` / `log_maxsize`。
 ## 许可证
 
 **AGPL-3.0-only**，与 `dae/Makefile` 的 `PKG_LICENSE` 一致。上游：dae 源码
-AGPL-3.0（olicesx/dae 为 daeuniverse/dae 的 fork）；LuCI 部分 fork 自 QiuSimons（未声明，
-文件头沿用 Apache-2.0 模板注释）；init/打包参考 immortalwrt/packages net/dae（GPL-2.0，
-文件头保留版权）。长期公开发布建议请求上游补充 LICENSE。
+AGPL-3.0（olicesx/dae 派生自 daeuniverse/dae）；LuCI 界面移植自 QiuSimons/luci-app-dae
+（上游未声明许可证，文件头沿用 Apache-2.0 模板注释）；init/打包参考
+immortalwrt/packages net/dae（GPL-2.0，文件头保留版权）。长期公开发布建议请求上游
+补充 LICENSE。
