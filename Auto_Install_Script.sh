@@ -5,6 +5,8 @@ STRIP_DEPS="vmlinux-btf"
 LANGS="zh-cn zh_Hans zh_cn"
 WANT_GEO=0
 TMPDIR_WORK="${TMPDIR:-/tmp}/dae-install.$$"
+PLANFILE="/tmp/dae-plan.$$"
+DECIDED="/tmp/dae-decide.$$"
 PKGS=""
 
 usage() {
@@ -26,7 +28,6 @@ usage() {
   curl -fsSL .../Auto_Install_Script.sh | sh -s
   curl -fsSL .../Auto_Install_Script.sh | sh -s dae
   curl -fsSL .../Auto_Install_Script.sh | sh -s -- --force
-  curl -fsSL .../Auto_Install_Script.sh | sh -s -- --repo someone/luci-app-dae
 EOF
     exit 0
 }
@@ -48,7 +49,7 @@ while [ $# -gt 0 ]; do
 done
 
 echo "╔══════════════════════════════════════════════╗"
-echo "║   luci-app-dae 一键安装（apk）              ║"
+║   luci-app-dae 一键安装（apk）                      ║
 echo "╚══════════════════════════════════════════════╝"
 
 case "$REPO" in
@@ -70,7 +71,7 @@ if [ ! -f /sys/kernel/btf/vmlinux ]; then
     echo "  dae 仍能装上，但无法启动。请换用带 BTF 的内核（如官方 24.10+ 默认配置）。"
 fi
 
-# ------------------------------------------------------- 获取最新 Release（不走 GitHub API，避免限流 403）
+# ------------------------------------------------- 获取最新 Release（不走 GitHub API，避免 403）
 info "查询最新 Release ..."
 
 get_latest_tag() {
@@ -107,7 +108,7 @@ strip_arch_suffix() {
 
 asset_ver() {
     f=$(basename "$1")
-    n=$(basename "$2")
+    n="$2"
     f=${f%.apk}
     v=${f#"$n"-}
     strip_arch_suffix "$v"
@@ -124,7 +125,7 @@ apk_installed_ver() {
         }'
 }
 
-# --------------------------------------------------------- 按名字挑选包
+# --------------------------------------------------------- 挑选包（写入 PLANFILE：每行 "URL|包名"）
 select_pkg() {
     cands=$(echo "$URLS" | grep -E "/${1}[-_][^\"/]*\.apk$")
     [ -n "$cands" ] || return 1
@@ -135,9 +136,25 @@ select_pkg() {
 }
 
 plan_has() {
-    for u in $PLAN; do
-        echo "$u" | grep -Eq "$1" && return 0
+    grep -q "^[^|]*|$1$" "$PLANFILE" 2>/dev/null
+}
+
+add_pkg() {
+    u=$(select_pkg "$1") || u=""
+    if [ -n "$u" ]; then
+        echo "$u|$1" >> "$PLANFILE"
+    else
+        echo "⚠ 未找到 $1 的 apk，跳过"
+        return 1
+    fi
+}
+
+add_i18n() {
+    for lang in $LANGS; do
+        u=$(select_pkg "luci-i18n-dae-${lang}") || u=""
+        if [ -n "$u" ]; then echo "$u|luci-i18n-dae-${lang}" >> "$PLANFILE"; return 0; fi
     done
+    echo "⚠ 未找到中文语言包，界面将是英文"
     return 1
 }
 
@@ -221,90 +238,67 @@ install_url() {
     return 0
 }
 
-# --------------------------------------------------------- 计算待装清单（带版本检测）
-add_pkg() {
-    u=$(select_pkg "$1") || u=""
-    if [ -n "$u" ]; then
-        PLAN="$PLAN $u"
-        PLAN_N="$PLAN_N $1"
-    else
-        echo "⚠ 未找到 $1 的 apk，跳过"
-        return 1
-    fi
-}
-
-add_i18n() {
-    for lang in $LANGS; do
-        u=$(select_pkg "luci-i18n-dae-${lang}") || u=""
-        if [ -n "$u" ]; then PLAN="$PLAN $u"; PLAN_N="$PLAN_N luci-i18n-dae-${lang}"; return 0; fi
-    done
-    echo "⚠ 未找到中文语言包，界面将是英文"
-    return 1
-}
+# --------------------------------------------------------- 计算待装清单
+: > "$PLANFILE"; : > "$DECIDED"
 
 if [ -n "$PKGS" ]; then
-    PLAN=""; PLAN_N=""
     want_luci=0
     for p in $PKGS; do
         [ "$p" = "luci-app-dae" ] && want_luci=1
         u=$(select_pkg "$p") || u=""
         [ -n "$u" ] || { echo "✗ 未找到 $p 的 apk，跳过"; continue; }
-        PLAN="$PLAN $u"; PLAN_N="$PLAN_N $p"
+        echo "$u|$p" >> "$PLANFILE"
     done
     if [ "$want_luci" -eq 1 ]; then
-        PRE=""; PRE_N=""
-        if ! plan_has "/dae-"; then
+        if ! plan_has dae; then
             u=$(select_pkg dae) || u=""
-            [ -n "$u" ] && { PRE="$PRE $u"; PRE_N="$PRE_N dae"; }
+            [ -n "$u" ] && echo "$u|dae" >> "$PLANFILE"
         fi
-        PLAN="$PRE$PLAN"; PLAN_N="$PRE_N$PLAN_N"
-        if ! plan_has "/luci-app-dae"; then
+        if ! plan_has luci-app-dae; then
             u=$(select_pkg luci-app-dae) || u=""
-            [ -n "$u" ] && { PLAN="$PLAN $u"; PLAN_N="$PLAN_N luci-app-dae"; }
+            [ -n "$u" ] && echo "$u|luci-app-dae" >> "$PLANFILE"
         fi
         add_i18n
     fi
 else
-    PLAN=""; PLAN_N=""
     add_pkg dae
     add_pkg luci-app-dae
     add_i18n
 fi
 
-[ -n "$PLAN" ] || die "没有可安装的包"
+if [ ! -s "$PLANFILE" ]; then die "没有可安装的包"; fi
 
 echo ""
 echo "版本检查："
 echo "  本地已装  vs  最新 Release"
-DO_PLAN=""; DO_N=""
-for u in $PLAN; do
-    n=$(echo "$PLAN_N" | awk '{print $1}'); PLAN_N=$(echo "$PLAN_N" | sed 's/^[^ ]* *//')
+while IFS='|' read -r u n; do
+    [ -n "$u" ] || continue
     newv=$(asset_ver "$u" "$n")
     oldv=$(apk_installed_ver "$n")
-    if [ -n "$oldv" ]; then
-        if [ "$oldv" = "$newv" ] && [ "$FORCE" -eq 0 ]; then
-            echo "  · $n  $oldv == $newv  已是最新，跳过"
-            continue
-        else
-            echo "  · $n  $oldv → $newv"
-        fi
+    if [ -n "$oldv" ] && [ "$oldv" = "$newv" ] && [ "$FORCE" -eq 0 ]; then
+        echo "  · $n  $oldv == $newv  已是最新，跳过"
     else
-        echo "  · $n  未安装 → $newv"
+        echo "  · $n  ${oldv:-未安装} → $newv"
+        echo "$u|$n" >> "$DECIDED"
     fi
-    DO_PLAN="$DO_PLAN $u"; DO_N="$DO_N $n"
-done
+done < "$PLANFILE"
 echo ""
 
-[ -n "$DO_PLAN" ] || { echo "✅ 所有包已是最新版本，无需操作（--force 可强制重装）"; exit 0; }
+if [ ! -s "$DECIDED" ]; then
+    echo "✅ 所有包已是最新版本，无需操作（--force 可强制重装）"
+    rm -f "$PLANFILE" "$DECIDED"
+    exit 0
+fi
 
 echo "即将安装："
-for u in $DO_PLAN; do echo "  · $(basename "$u")"; done
+while IFS='|' read -r u n; do echo "  · $(basename "$u")"; done < "$DECIDED"
 echo ""
 
 FAILED=""
-for u in $DO_PLAN; do
+while IFS='|' read -r u n; do
     install_url "$u" || FAILED="$FAILED $(basename "$u")"
-done
+done < "$DECIDED"
+rm -f "$PLANFILE" "$DECIDED"
 
 if [ "$WANT_GEO" -eq 1 ]; then
     echo ""
@@ -332,5 +326,6 @@ echo ""
 echo "下一步："
 echo "  1. LuCI 界面：服务 → DAE（若看不到请清浏览器缓存或重新登录）"
 echo "  2. 命令行启用：uci set dae.config.enabled=1; uci commit dae; /etc/init.d/dae start"
-echo "  3. 首次使用请先在 Node Settings 页签（或 /etc/dae/config.d/node.dae）"
+echo "  3. 默认配置不含 geoip/geosite 引用；若配置里要用 geo 数据，请先安装：apk add v2ray-geoip v2ray-geosite"
+echo "  4. 首次使用请先在 Node Settings 页签（或 /etc/dae/config.d/node.dae）"
 echo "     把示例节点/订阅替换成自己的，再启用服务，否则 dae validate 会拒绝启动"
