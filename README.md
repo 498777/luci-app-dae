@@ -41,11 +41,10 @@ curl -fsSL "https://raw.githubusercontent.com/498777/luci-app-dae/main/Auto_Inst
 | DNS Settings | `/etc/dae/config.d/dns.dae` |
 | Node Settings | `/etc/dae/config.d/node.dae`（节点/订阅/分组） |
 | Routing Settings | `/etc/dae/config.d/route.dae` |
-| Logs | `/var/log/dae/dae.log`（实时 + 清空） |
+| Logs | `/var/log/dae/dae.log`（实时日志） |
 
 默认 `node.dae` 是占位模板：**先在 Node 页签替换为真实节点/订阅再启用**，否则
-`dae validate` 拒绝启动。Global 页的「订阅自动更新」仅保存选项，init 不含订阅调度
-（与 luci-app-honk 现状一致）。
+`dae validate` 拒绝启动。
 
 ## 安装与启用
 
@@ -85,8 +84,7 @@ apk add v2ray-geoip v2ray-geosite
 
 推送 `main`，或在 **Actions → Build apk → Run workflow** 手动触发（SDK 默认
 `openwrt-25.12`）。Release 生成 `dae_<version>`（如 `dae_2026.09.08-r4`）并附 apk：
-dae 核心每架构一份，noarch 包（luci / 语言包）合并后各一份。每次发布前自动清空
-该 tag 的旧附件。
+dae 核心每架构一份，luci / 语言包各一份。每次发布前自动清空该 tag 的旧附件。
 
 在完整源码树中手动编 `luci-app-dae` 时，`dae` 包需要本地已存在预编译二进制：
 
