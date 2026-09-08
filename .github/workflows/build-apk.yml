@@ -77,10 +77,8 @@ jobs:
 
       - name: Fetch kdae source
         run: |
-          git clone https://github.com/olicesx/dae.git src
+          git clone --depth 1 --branch kdae https://github.com/olicesx/dae.git src
           cd src
-          git fetch --depth 1 origin 737d94442f1a82da55073cd4c3697e860ce84cc9
-          git checkout FETCH_HEAD
           git submodule update --init --recursive
 
       - name: Build dae

@@ -1,0 +1,53 @@
+name: Update dae version
+
+on:
+  schedule:
+    - cron: '17 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Sync upstream kdae
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compare upstream kdae HEAD
+        id: cmp
+        run: |
+          head=$(git ls-remote https://github.com/olicesx/dae.git refs/heads/kdae | awk '{print $1}')
+          cur=$(cat dae/upstream.commit)
+          echo "upstream = $head"
+          echo "recorded = $cur"
+          if [ -z "$head" ]; then
+            echo "failed to fetch upstream HEAD"
+            exit 1
+          fi
+          if [ "$head" != "$cur" ]; then
+            echo "$head" > dae/upstream.commit
+            today=$(date +%Y.%m.%d)
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${today}/" dae/Makefile
+            sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" dae/Makefile
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push
+        if: steps.cmp.outputs.changed == 'true'
+        run: |
+          sha=$(cat dae/upstream.commit)
+          echo "Syncing to ${sha}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dae/upstream.commit dae/Makefile
+          git commit -m "dae: sync upstream kdae @ ${sha:0:7}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

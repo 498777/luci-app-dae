@@ -4,7 +4,7 @@
 
 OpenWrt 上 [dae](https://github.com/daeuniverse/dae)（eBPF 透明代理）的自建打包仓库：
 
-- 二进制：从 [olicesx/dae](https://github.com/olicesx/dae) **kdae** 分支源码编译（固定 commit `737d9444`，见 `dae/Makefile`）；
+- 二进制：从 [olicesx/dae](https://github.com/olicesx/dae) **kdae** 分支预编译（跟随上游最新提交；`dae/upstream.commit` 记录当前基准，每日由 `update-dae` 工作流自动同步并触发构建）；
 - LuCI：模块化 luasrc 界面（与 luci-app-honk 同构），菜单显示名统一 **DAE**；
 - init：官方精简样式（dae 自带日志轮转，不劫持 `/tmp/resolv.conf`，无订阅 cron）。
 
