@@ -4,7 +4,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-dae
 PKG_VERSION:=1.1.0
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 
 LUCI_TITLE:=LuCI support for DAE
 LUCI_PKGARCH:=all
