@@ -36,6 +36,12 @@ define Package/dae/conffiles
 /etc/config/dae
 endef
 
+define Build/Prepare
+endef
+
+define Build/Compile
+endef
+
 ifeq ($(ARCH),x86_64)
   DAE_PREBUILT:=$(CURDIR)/files/prebuilt/x86_64v3/dae
 else ifeq ($(ARCH),aarch64_generic)
@@ -46,6 +52,7 @@ endif
 
 define Package/dae/install
 	$(INSTALL_DIR) $(1)/usr/bin/
+	test -f "$(DAE_PREBUILT)" || { echo "prebuilt missing: $(DAE_PREBUILT)"; exit 1; }
 	$(INSTALL_BIN) $(DAE_PREBUILT) $(1)/usr/bin/dae
 	$(INSTALL_DIR) $(1)/etc/dae/
 	$(INSTALL_CONF) $(CURDIR)/files/config.dae $(1)/etc/dae/config.dae
