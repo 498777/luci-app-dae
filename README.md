@@ -101,12 +101,14 @@ make package/dae/compile V=s
 ## 目录
 
 ```
-dae/                              核心包：kdae 分支编译 + 默认配置/init
+dae/                              核心包：默认配置/init（二进制由预编译 job 提供）
+  upstream.commit                 kdae 分支当前基准提交（update-dae 维护）
   files/dae.init                  官方精简启动脚本（参照 dae.txt）
   files/config.dae                拆分配置入口（include config.d/*.dae）
   files/config.d/{dns,node,route}.dae   默认拆分模板
 luci-app-dae/                     LuCI 模块化界面（luasrc：controller/cbi/view/po）
-.github/workflows/build-apk.yml   编译 apk 并发布 Release
+.github/workflows/build-apk.yml   预编译 kdae 二进制 + 编译 apk 并发布 Release
+.github/workflows/update-dae.yml  每日同步上游 kdae 提交并自动 bump 版本
 ```
 
 日志：`/var/log/dae/dae.log`，轮转由 dae 的 `--logfile-maxbackups/-maxsize` 控制，对应
