@@ -12,8 +12,7 @@ OpenWrt 上 [dae](https://github.com/daeuniverse/dae)（eBPF 透明代理）的�
 
 - **只出 apk**（OpenWrt 25.x apk 体系）；
 - **不依赖 `vmlinux-btf`**：移除条件依赖与 choice，固定使用内核自带 BTF；
-- **不依赖 v2ray-geodata**：geo（geoip/geosite）数据不作为依赖，默认配置不含
-  `geoip:`/`geosite:` 引用；配置里需要时再自行安装官方 `v2ray-geoip` `v2ray-geosite`；
+- **geo 数据按需安装**：dae 不依赖 geo 数据，但规则引用 `geoip:`/`geosite:` 时需要。安装官方 `v2ray-geoip` `v2ray-geosite` 后文件在 `/usr/share/v2ray/`，需让 dae 找得到：`--geo` 会自动在 `/usr/share/dae` 建软链（dae 的默认 geo 搜索目录），或手动 `ln -sf /usr/share/v2ray/{geoip,geosite}.dat /usr/share/dae/`；
 - x86_64 包内二进制按 **GOAMD64=v3** 编译（包架构仍为 `x86_64`）。
 
 ## 一键安装
@@ -55,10 +54,13 @@ uci set dae.config.enabled=1 && uci commit dae
 /etc/init.d/dae start
 ```
 
-若配置里用到 `geoip:` / `geosite:` 规则，需先装官方 geo 数据包：
+若配置里用到 `geoip:` / `geosite:` 规则，需先装官方 geo 数据包并建软链：
 
 ```sh
 apk add v2ray-geoip v2ray-geosite
+mkdir -p /usr/share/dae
+ln -sf /usr/share/v2ray/geoip.dat   /usr/share/dae/geoip.dat
+ln -sf /usr/share/v2ray/geosite.dat /usr/share/dae/geosite.dat
 ```
 
 ## 前提与平台说明
@@ -66,8 +68,8 @@ apk add v2ray-geoip v2ray-geosite
 - **BTF**：eBPF CO-RE 需要内核 `CONFIG_DEBUG_INFO_BTF`。官方 25.x x86_64 / armsr 默认开启；
   未开启时 dae 可安装但无法启动。CI 有 Assert 步骤保证产物不含 `vmlinux-btf` 依赖。
 - **geo 数据**：dae 本体不依赖 geo 文件，只有规则引用 `geoip:`/`geosite:` 时才需要。
-  本仓库默认配置不含这些引用；需要时安装官方 `v2ray-geoip` `v2ray-geosite`（文件位于
-  `/usr/share/v2ray/`，dae 的默认 geo 目录自动兼容）。
+  默认配置含 geo 规则，安装官方 `v2ray-geoip` `v2ray-geosite` 即可（文件位于
+  `/usr/share/v2ray/`，dae 默认 geo 目录自动兼容）。
 - **x86_64v3**：官方 OpenWrt / ImmortalWrt 无 `x86_64_v3` 架构/SDK，v3 只是同一 amd64 的
   GOAMD64 档位（上游 kdae 亦如此）。本仓库包架构为 `x86_64`、二进制按 v3 编译，需要 CPU
   支持 AVX2/BMI（2013+ Intel Haswell、2015+ AMD Excavator）。老 CPU 跑会 SIGILL，把

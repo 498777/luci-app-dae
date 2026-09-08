@@ -305,6 +305,10 @@ if [ "$WANT_GEO" -eq 1 ]; then
     info "从官方源安装 geo 数据（v2ray-geoip / v2ray-geosite）..."
     if apk add v2ray-geoip v2ray-geosite 2>/dev/null; then
         ok "geo 数据已安装"
+        mkdir -p /usr/share/dae
+        [ -f /usr/share/v2ray/geoip.dat ] && ln -sf /usr/share/v2ray/geoip.dat /usr/share/dae/geoip.dat
+        [ -f /usr/share/v2ray/geosite.dat ] && ln -sf /usr/share/v2ray/geosite.dat /usr/share/dae/geosite.dat
+        ok "已在 /usr/share/dae 建立 geo 软链"
     else
         echo "⚠ 官方源安装 geo 数据失败（可能未配置官方软件源），可稍后手动执行：apk add v2ray-geoip v2ray-geosite"
     fi
@@ -326,6 +330,6 @@ echo ""
 echo "下一步："
 echo "  1. LuCI 界面：服务 → DAE（若看不到请清浏览器缓存或重新登录）"
 echo "  2. 命令行启用：uci set dae.config.enabled=1; uci commit dae; /etc/init.d/dae start"
-echo "  3. 默认配置不含 geoip/geosite 引用；若配置里要用 geo 数据，请先安装：apk add v2ray-geoip v2ray-geosite"
+echo "  3. 默认配置含 geoip/geosite 规则，启用前请先安装 geo 数据：apk add v2ray-geoip v2ray-geosite（或用 --geo）"
 echo "  4. 首次使用请先在 Node Settings 页签（或 /etc/dae/config.d/node.dae）"
 echo "     把示例节点/订阅替换成自己的，再启用服务，否则 dae validate 会拒绝启动"
