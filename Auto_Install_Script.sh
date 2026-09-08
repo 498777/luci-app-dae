@@ -1,38 +1,9 @@
 #!/bin/sh
-# ============================================================================
-#  Auto_Install_Script.sh —— 从本仓库 Release 安装 luci-app-dae（仅 apk 包）
-#
-#  用法：
-#    curl -fsSL "https://raw.githubusercontent.com/<OWNER>/<REPO>/main/Auto_Install_Script.sh" \
-#      | sh -s luci-app-dae
-#
-#  可选参数：
-#    --repo <OWNER/REPO>   指定 Release 所在仓库（也可 export REPO=... 后运行）
-#    --keep-dep            不做「剔除 vmlinux-btf」处理，原样安装
-#    -h / --help           查看帮助
-#    其他位置参数          只安装指定的包，例如: sh -s dae luci-app-dae
-#                          （留空则自动安装 dae + dae-geoip + dae-geosite
-#                            + luci-app-dae + 中文语言包）
-#
-#  说明：
-#    * 本仓库只发布 OpenWrt apk 包（25.x 的 apk 体系），
-#      不支持 opkg/ipk，检测到 opkg-only 系统会直接退出。
-#    * dae 为 eBPF CO-RE 程序，运行依赖内核自带 BTF
-#      （/sys/kernel/btf/vmlinux），不依赖 vmlinux-btf 包。
-#    * x86_64 包内的 dae 二进制按 GOAMD64=v3 编译，需要 CPU 支持
-#      AVX2/BMI（2013+ Intel Haswell、2015+ AMD Excavator）；
-#      aarch64 不受影响。
-#    * 若 Release 里的包仍然声明了 vmlinux-btf，脚本会解开 apk、
-#      从 .PKGINFO 的 depend 里删掉它，再重新打包安装。
-# ============================================================================
 
-# ↓↓↓ 改成你自己的 GitHub 仓库（OWNER/REPO）↓↓↓
 REPO="${REPO:-498777/luci-app-dae}"
 
-# 需要从依赖里剔除的包名，多个用空格分隔；留空则不做剔除
 STRIP_DEPS="vmlinux-btf"
 
-# 语言包优先级（按顺序匹配，命中即装）
 LANGS="zh-cn zh_Hans zh_cn"
 
 TMPDIR_WORK="${TMPDIR:-/tmp}/dae-install.$$"
@@ -80,7 +51,6 @@ echo "╔═══════════════════════�
 echo "║   luci-app-dae 一键安装（apk）               ║"
 echo "╚══════════════════════════════════════════════╝"
 
-# ---------------------------------------------------------------- 环境检查
 case "$REPO" in
     ""|YOUR_OWNER/YOUR_REPO)
         die "未设置仓库。请把脚本里的 REPO 改成你的仓库，或这样运行：
@@ -95,21 +65,17 @@ ARCH=$(apk --print-arch 2>/dev/null)
 [ -n "$ARCH" ] || die "无法获取系统架构（apk --print-arch 失败）"
 echo "架构: $ARCH"
 
-# dae 跑在 eBPF CO-RE 上，内核没有 BTF 就起不来，这里先给个明确提示
 if [ ! -f /sys/kernel/btf/vmlinux ]; then
     echo "⚠ 未发现 /sys/kernel/btf/vmlinux：当前内核可能未开启 CONFIG_DEBUG_INFO_BTF。"
     echo "  dae 仍能装上，但无法启动。请换用带 BTF 的内核（如官方 25.x 默认配置）。"
 fi
 
-# ------------------------------------------------------- 拉取 Release 列表
 info "查询 Release ..."
 API="https://api.github.com/repos/${REPO}/releases?per_page=5"
 DATA=$(curl -fsSL --max-time 30 "$API") || die "GitHub API 请求失败，请检查网络或仓库名是否正确"
 URLS=$(echo "$DATA" | grep -o 'https://[^"]*\.apk' | sort -u)
 [ -n "$URLS" ] || die "该仓库 Release 中没有找到 .apk 文件"
 
-# --------------------------------------------------------- 按名字挑选包
-# $1 = 文件名前缀
 select_pkg() {
     cands=$(echo "$URLS" | grep -E "/${1}[-_][^\"/]*\.apk$")
     [ -n "$cands" ] || return 1
@@ -119,7 +85,6 @@ select_pkg() {
     echo "$best"
 }
 
-# PLAN 里是否已有匹配正则 $1 的包
 plan_has() {
     for u in $PLAN; do
         echo "$u" | grep -Eq "$1" && return 0
@@ -127,8 +92,6 @@ plan_has() {
     return 1
 }
 
-# --------------------------------------------- 拆包剔除依赖后重新打包
-# 成功返回 0（无论是否真的改过），无法拆分返回 1
 strip_apk_dep() {
     f="$1"
     [ -n "$STRIP_DEPS" ] || return 0
@@ -137,7 +100,6 @@ strip_apk_dep() {
     rm -rf "$TMPDIR_WORK"; mkdir -p "$TMPDIR_WORK" || return 1
 
     gzip -dc "$f" > "$TMPDIR_WORK/all.tar" 2>/dev/null || { rm -rf "$TMPDIR_WORK"; return 1; }
-    # 第一个 gzip 成员是控制段，里面只有 .PKGINFO
     tar -xOf "$TMPDIR_WORK/all.tar" .PKGINFO > "$TMPDIR_WORK/.PKGINFO" 2>/dev/null || {
         rm -rf "$TMPDIR_WORK"; return 1; }
 
@@ -150,8 +112,6 @@ strip_apk_dep() {
     fi
     echo "  ⚙ 检测到依赖 $STRIP_DEPS，拆包剔除后重新打包 ..."
 
-    # apk = 控制段(gzip) + 数据段(gzip)，解压后是两个首尾相接的 tar。
-    # 控制段按 tar 默认记录大小 10240 字节对齐，据此切出数据段。
     allsize=$(wc -c < "$TMPDIR_WORK/all.tar" | tr -d ' ')
     off=""
     if [ 10240 -lt "$allsize" ] &&
@@ -189,7 +149,6 @@ strip_apk_dep() {
     return 0
 }
 
-# ------------------------------------------------------------- 安装单个包
 install_url() {
     url="$1"
     [ -n "$url" ] || return 1
@@ -212,8 +171,6 @@ install_url() {
     return 0
 }
 
-# --------------------------------------------------------- 计算待装清单
-# 按名字挑一个包加进 PLAN
 add_pkg() {
     u=$(select_pkg "$1") || u=""
     if [ -n "$u" ]; then
@@ -224,7 +181,6 @@ add_pkg() {
     fi
 }
 
-# 按优先级挑一个中文语言包加进 PLAN
 add_i18n() {
     for lang in $LANGS; do
         u=$(select_pkg "luci-i18n-dae-${lang}") || u=""
@@ -243,8 +199,6 @@ if [ -n "$PKGS" ]; then
         [ -n "$u" ] || { echo "✗ 未找到 $p 的 apk，跳过"; continue; }
         PLAN="$PLAN $u"
     done
-    # luci-app-dae 依赖 dae / dae-geoip / dae-geosite：缺哪个就自动补上，
-    # 并把补的包排到 luci 之前安装，避免 apk 依赖检查失败。
     if [ "$want_luci" -eq 1 ]; then
         PRE=""
         for pair in "dae:^/dae-[0-9]" "dae-geoip:/dae-geoip" "dae-geosite:/dae-geosite"; do
@@ -283,7 +237,6 @@ for u in $PLAN; do
     install_url "$u" || FAILED="$FAILED $(basename "$u")"
 done
 
-# ------------------------------------------------------------ 收尾清理
 echo ""
 info "刷新 LuCI 缓存 ..."
 rm -rf /tmp/luci-indexcache /tmp/luci-modulecache 2>/dev/null

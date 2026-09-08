@@ -1,16 +1,4 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-#
-# dae 二进制包（自建仓库，仅 apk）
-# - 源码：https://github.com/olicesx/dae 的 kdae 分支（固定 commit，见 PKG_SOURCE_VERSION）
-# - 参考：immortalwrt/packages 的 net/dae 与 QiuSimons/luci-app-dae（dae/ 子目录）
-# - 本仓库相对上游的调整：
-#   1) 移除 `+DAE_USE_VMLINUX_BTF:vmlinux-btf` 条件依赖及对应 choice，
-#      固定使用内核自带 BTF（与 luci-app-honk 仓库的改法一致）；
-#   2) geo 数据拆成独立子包 dae-geoip / dae-geosite：依赖 v2ray-geoip/geosite 的同时
-#      在 /usr/share/dae 下建立软链，新旧 dae 默认 geo 目录均可命中；
-#   3) x86_64 构建启用 GOAMD64=v3（包架构仍为 x86_64，可正常安装，
-#      运行要求 CPU 支持 x86-64-v3，即 AVX2/BMI1/BMI2，2013 年后的主流 Intel、
-#      2015 年后的主流 AMD 均满足）。
 
 include $(TOPDIR)/rules.mk
 
@@ -20,7 +8,6 @@ PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_PROTO:=git
-# olicesx/dae 分支 kdae 的 HEAD
 PKG_SOURCE_VERSION:=737d94442f1a82da55073cd4c3697e860ce84cc9
 PKG_SOURCE_URL:=https://github.com/olicesx/dae.git
 PKG_MIRROR_HASH:=skip
@@ -43,7 +30,6 @@ GO_PKG_LDFLAGS_X:= \
 	$(GO_PKG)/common/consts.MaxMatchSetLen_=1024
 GO_PKG_TAGS:=trace
 
-# 仅 GOARCH=amd64 时生效；aarch64 等其它架构不受影响
 export GOAMD64=v3
 
 include $(INCLUDE_DIR)/package.mk
@@ -60,7 +46,6 @@ endef
 define Package/dae
   $(call Package/dae/Default)
   TITLE:=A lightweight and high-performance transparent proxy solution
-  # 需要内核开启 CONFIG_DEBUG_INFO_BTF（不再依赖 vmlinux-btf 包）
   DEPENDS:=$(GO_ARCH_DEPENDS) \
     +ca-bundle +kmod-sched-core +kmod-sched-bpf \
     +kmod-veth \

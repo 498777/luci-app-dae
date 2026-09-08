@@ -1,13 +1,5 @@
 name: Build apk
 
-# 只产出 OpenWrt apk 包（25.x SDK 起默认 apk 体系），不再出 ipk。
-# 与上游的差异：
-# - dae/Makefile 使用 olicesx/dae 的 kdae 分支（固定 commit）；
-# - 已移除 `+DAE_USE_VMLINUX_BTF:vmlinux-btf`，包不会依赖 vmlinux-btf；
-# - x86_64 构建启用 GOAMD64=v3（见 dae/Makefile）；
-# - geo 数据由 dae-geoip / dae-geosite 提供（依赖 v2ray-geoip/geosite，
-#   软链到 /usr/share/dae）。
-
 on:
   workflow_dispatch:
     inputs:
@@ -68,7 +60,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # x86_64：包架构为 x86_64，dae 二进制按 GOAMD64=v3 编译（需要 v3 级 CPU）
           - arch: x86_64
             short: x86_64v3
           - arch: aarch64_generic
@@ -84,7 +75,6 @@ jobs:
           FEEDNAME: packages_ci
           PACKAGES: ${{ needs.prepare.outputs.packages }}
           NO_REFRESH_CHECK: true
-          # 关闭 action 自带的 shfmt 格式门禁（init 脚本为手工排版）
           NO_SHFMT_CHECK: true
           V: s
 
@@ -98,7 +88,6 @@ jobs:
           for f in bin/packages/${{ matrix.arch }}/packages_ci/*.apk; do
             base="$(basename "$f")"
             name="${base%.apk}"
-            # 名字里已带架构的保持原样；noarch 包补上架构后缀，避免两个 job 的产物重名
             if [[ "$name" == *x86_64* || "$name" == *aarch64* ]]; then
               new="$base"
             else
@@ -153,10 +142,6 @@ jobs:
         run: |
           set -euo pipefail
           cd release-dist
-          # noarch 包（luci-app-dae / dae-geoip / dae-geosite / luci-i18n-*）在 rename
-          # 阶段被两个 job 各自追加了 -x86_64v3 / -aarch64 后缀，内容完全相同。
-          # 仅当同一 basename 去掉后缀后「两种后缀的包都出现」才判定为重复：
-          # 合并成单个原始名文件；架构包只有一种后缀，不会被误伤。
           SUFFIXES="x86_64v3 aarch64"
           for s1 in $SUFFIXES; do
             for f in *-${s1}.apk; do
@@ -184,8 +169,6 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ needs.prepare.outputs.release_tag }}"
-          # 每次发布（含同 tag 重跑）都先把旧附件删掉，只保留本次产物：
-          # 语言包等随版本变化的文件不会在 Release 里越积越多。
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             assets=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name')
             if [ -n "$assets" ]; then
