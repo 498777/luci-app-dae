@@ -1,0 +1,177 @@
+name: Build apk
+
+# 只产出 OpenWrt apk 包（25.x SDK 起默认 apk 体系），不再出 ipk。
+# 与上游的差异：
+# - dae/Makefile 使用 olicesx/dae 的 kdae 分支（固定 commit）；
+# - 已移除 `+DAE_USE_VMLINUX_BTF:vmlinux-btf`，包不会依赖 vmlinux-btf；
+# - x86_64 构建启用 GOAMD64=v3（见 dae/Makefile）；
+# - geo 数据由 dae-geoip / dae-geosite 提供（依赖 v2ray-geoip/geosite，
+#   软链到 /usr/share/dae）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      sdk:
+        description: 'OpenWrt SDK 分支（25.x 起产出 apk）'
+        required: false
+        default: openwrt-25.12
+      packages:
+        description: '要编译的包，空格分隔'
+        required: false
+        default: 'dae dae-geoip dae-geosite luci-app-dae'
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '23 3 * * *'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  prepare:
+    name: Prepare version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+      sdk: ${{ steps.meta.outputs.sdk }}
+      packages: ${{ steps.meta.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate version metadata
+        id: meta
+        shell: bash
+        run: |
+          pkg_version=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
+          pkg_release=$(grep '^PKG_RELEASE:=' dae/Makefile | head -n 1 | cut -d= -f2)
+          sdk="${{ inputs.sdk || 'openwrt-25.12' }}"
+          packages="${{ inputs.packages || 'dae dae-geoip dae-geosite luci-app-dae' }}"
+
+          version="${pkg_version}-r${pkg_release}"
+          echo "version=${version}"                >> "$GITHUB_OUTPUT"
+          echo "release_tag=dae_${version}"        >> "$GITHUB_OUTPUT"
+          echo "release_name=dae_${version}"       >> "$GITHUB_OUTPUT"
+          echo "sdk=${sdk}"                        >> "$GITHUB_OUTPUT"
+          echo "packages=${packages}"              >> "$GITHUB_OUTPUT"
+
+          echo "Version: ${version} / SDK: ${sdk} / Packages: ${packages}"
+
+  build:
+    name: Build ${{ matrix.short }}
+    runs-on: ubuntu-latest
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # x86_64：包架构为 x86_64，dae 二进制按 GOAMD64=v3 编译（需要 v3 级 CPU）
+          - arch: x86_64
+            short: x86_64v3
+          - arch: aarch64_generic
+            short: aarch64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build packages
+        uses: sbwml/openwrt-gh-action-sdk@go1.26
+        env:
+          ARCH: ${{ matrix.arch }}-${{ needs.prepare.outputs.sdk }}
+          FEEDNAME: packages_ci
+          PACKAGES: ${{ needs.prepare.outputs.packages }}
+          NO_REFRESH_CHECK: true
+          # 关闭 action 自带的 shfmt 格式门禁（init 脚本为手工排版）
+          NO_SHFMT_CHECK: true
+          V: s
+
+      - name: Rename artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          short="${{ matrix.short }}"
+          shopt -s nullglob
+          for f in bin/packages/${{ matrix.arch }}/packages_ci/*.apk; do
+            base="$(basename "$f")"
+            name="${base%.apk}"
+            # 名字里已带架构的保持原样；noarch 包补上架构后缀，避免两个 job 的产物重名
+            if [[ "$name" == *x86_64* || "$name" == *aarch64* ]]; then
+              new="$base"
+            else
+              new="${name}-${short}.apk"
+            fi
+            cp "$f" "dist/${new}"
+          done
+          ls -lah dist
+
+      - name: Assert no vmlinux-btf dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          found=0
+          for f in dist/*.apk; do
+            deps=$(gzip -dc "$f" | tar -xO .PKGINFO 2>/dev/null | grep '^depend = ' || true)
+            if echo "$deps" | grep -q 'vmlinux-btf'; then
+              echo "::error file=$f::仍然依赖 vmlinux-btf"
+              found=1
+            fi
+          done
+          if [ "$found" -ne 0 ]; then
+            echo "dae/Makefile 的依赖没有清理干净，终止发布"
+            exit 1
+          fi
+          echo "✓ 没有任何包依赖 vmlinux-btf"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.short }}
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - build
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-dist
+          merge-multiple: true
+
+      - name: Create or update GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.release_tag }}
+          name: ${{ needs.prepare.outputs.release_name }}
+          files: release-dist/*
+          generate_release_notes: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target_commitish: ${{ github.sha }}
+
+      - name: Delete old releases
+        uses: ophub/delete-releases-workflows@main
+        with:
+          delete_releases: true
+          releases_keep_latest: 3
+          delete_tags: true
+          delete_workflows: true
+          workflows_keep_day: 3
+          gh_token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Cleanup old action artifacts
+        uses: c-hive/gha-remove-artifacts@main
+        with:
+          age: '3 days'
+          skip-recent: 3
+        continue-on-error: true
