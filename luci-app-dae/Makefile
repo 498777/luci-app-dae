@@ -11,3 +11,5 @@ LUCI_PKGARCH:=all
 LUCI_DEPENDS:=+dae +luci-compat
 
 include $(TOPDIR)/feeds/luci/luci.mk
+
+# call BuildPackage - OpenWrt buildroot signature
