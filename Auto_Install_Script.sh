@@ -3,7 +3,7 @@
 REPO="${REPO:-498777/luci-app-dae}"
 
 STRIP_DEPS="vmlinux-btf"
-
+WANT_GEO=0
 LANGS="zh-cn zh_Hans zh_cn"
 
 TMPDIR_WORK="${TMPDIR:-/tmp}/dae-install.$$"
@@ -17,17 +17,16 @@ usage() {
 参数：
   --repo <OWNER/REPO>   指定 Release 所在仓库（也可 export REPO=... 后运行）
   --repo=<OWNER/REPO>   同上
+  --geo                 同时从官方源安装 v2ray-geoip / v2ray-geosite（配置里用到 geoip:/geosite: 时才需要）
   --keep-dep            不剔除 vmlinux-btf 依赖，原样安装
   -h, --help            显示本帮助
-  <包名>...             指定要装的包，留空则装全套
-                        （指定 luci-app-dae 时会自动补上 dae、geo 数据与中文语言包）
+  <包名>...             指定要装的包，留空则装 dae + luci-app-dae + 中文语言包
+                        （指定 luci-app-dae 时会自动补上 dae 与中文语言包）
 
 示例：
-  # 默认装全套（dae + geo + luci + 中文包）
   curl -fsSL .../Auto_Install_Script.sh | sh -s
-  # 只装主程序与 geo 数据（不带 LuCI）
-  curl -fsSL .../Auto_Install_Script.sh | sh -s dae dae-geoip dae-geosite
-  # 临时换个仓库
+  curl -fsSL .../Auto_Install_Script.sh | sh -s dae
+  curl -fsSL .../Auto_Install_Script.sh | sh -s -- --geo luci-app-dae
   curl -fsSL .../Auto_Install_Script.sh | sh -s -- --repo someone/luci-app-dae
 EOF
     exit 0
@@ -41,6 +40,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --repo|-r)     REPO="$2"; shift 2 ;;
         --repo=*)      REPO="${1#--repo=}"; shift ;;
+        --geo)         WANT_GEO=1; shift ;;
         --keep-dep)    STRIP_DEPS=""; shift ;;
         -h|--help)     usage ;;
         *)             PKGS="$PKGS $1"; shift ;;
@@ -201,14 +201,10 @@ if [ -n "$PKGS" ]; then
     done
     if [ "$want_luci" -eq 1 ]; then
         PRE=""
-        for pair in "dae:^/dae-[0-9]" "dae-geoip:/dae-geoip" "dae-geosite:/dae-geosite"; do
-            name="${pair%%:*}"
-            pat="${pair#*:}"
-            if ! plan_has "$pat"; then
-                u=$(select_pkg "$name") || u=""
-                [ -n "$u" ] && PRE="$PRE $u"
-            fi
-        done
+        if ! plan_has "^/dae-[0-9]"; then
+            u=$(select_pkg dae) || u=""
+            [ -n "$u" ] && PRE="$PRE $u"
+        fi
         PLAN="$PRE$PLAN"
         if ! plan_has "/luci-app-dae"; then
             u=$(select_pkg luci-app-dae) || u=""
@@ -219,8 +215,6 @@ if [ -n "$PKGS" ]; then
 else
     PLAN=""
     add_pkg dae
-    add_pkg dae-geoip
-    add_pkg dae-geosite
     add_pkg luci-app-dae
     add_i18n
 fi
@@ -236,6 +230,16 @@ FAILED=""
 for u in $PLAN; do
     install_url "$u" || FAILED="$FAILED $(basename "$u")"
 done
+
+if [ "$WANT_GEO" -eq 1 ]; then
+    echo ""
+    info "从官方源安装 geo 数据（v2ray-geoip / v2ray-geosite）..."
+    if apk add v2ray-geoip v2ray-geosite 2>/dev/null; then
+        ok "geo 数据已安装"
+    else
+        echo "⚠ 官方源安装 geo 数据失败（可能未配置官方软件源），可稍后手动执行：apk add v2ray-geoip v2ray-geosite"
+    fi
+fi
 
 echo ""
 info "刷新 LuCI 缓存 ..."
@@ -253,5 +257,6 @@ echo ""
 echo "下一步："
 echo "  1. LuCI 界面：服务 → DAE（若看不到请清浏览器缓存或重新登录）"
 echo "  2. 命令行启用：uci set dae.config.enabled=1; uci commit dae; /etc/init.d/dae start"
-echo "  3. 首次使用请先在 Node Settings 页签（或 /etc/dae/config.d/node.dae）"
+echo "  3. 默认配置不含 geoip/geosite 引用；若配置里要用 geo 数据，请先安装：apk add v2ray-geoip v2ray-geosite"
+echo "  4. 首次使用请先在 Node Settings 页签（或 /etc/dae/config.d/node.dae）"
 echo "     把示例节点/订阅替换成自己的，再启用服务，否则 dae validate 会拒绝启动"

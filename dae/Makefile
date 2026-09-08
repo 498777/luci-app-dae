@@ -4,7 +4,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=dae
 PKG_VERSION:=2026.09.08
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_PROTO:=git
@@ -36,34 +36,16 @@ include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/bpf.mk
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
-define Package/dae/Default
+define Package/dae
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=Web Servers/Proxies
   URL:=https://github.com/olicesx/dae
-endef
-
-define Package/dae
-  $(call Package/dae/Default)
   TITLE:=A lightweight and high-performance transparent proxy solution
   DEPENDS:=$(GO_ARCH_DEPENDS) \
     +ca-bundle +kmod-sched-core +kmod-sched-bpf \
     +kmod-veth \
     +@KERNEL_XDP_SOCKETS
-endef
-
-define Package/dae-geoip
-  $(call Package/dae/Default)
-  TITLE:=geoip data for dae
-  DEPENDS:=+dae +v2ray-geoip
-  PKGARCH:=all
-endef
-
-define Package/dae-geosite
-  $(call Package/dae/Default)
-  TITLE:=geosite data for dae
-  DEPENDS:=+dae +v2ray-geosite
-  PKGARCH:=all
 endef
 
 define Package/dae/description
@@ -120,17 +102,5 @@ define Package/dae/install
 	$(INSTALL_BIN) $(CURDIR)/files/dae.init $(1)/etc/init.d/dae
 endef
 
-define Package/dae-geoip/install
-	$(INSTALL_DIR) $(1)/usr/share/dae
-	$(LN) ../v2ray/geoip.dat $(1)/usr/share/dae/geoip.dat
-endef
-
-define Package/dae-geosite/install
-	$(INSTALL_DIR) $(1)/usr/share/dae
-	$(LN) ../v2ray/geosite.dat $(1)/usr/share/dae/geosite.dat
-endef
-
 $(eval $(call GoBinPackage,dae))
 $(eval $(call BuildPackage,dae))
-$(eval $(call BuildPackage,dae-geoip))
-$(eval $(call BuildPackage,dae-geosite))
