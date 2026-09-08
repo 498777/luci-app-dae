@@ -42,9 +42,9 @@ endef
 define Build/Compile
 endef
 
-ifeq ($(ARCH),x86_64)
+ifeq ($(ARCH_PACKAGES),x86_64)
   DAE_PREBUILT:=$(CURDIR)/files/prebuilt/x86_64v3/dae
-else ifeq ($(ARCH),aarch64_generic)
+else ifeq ($(ARCH_PACKAGES),aarch64_generic)
   DAE_PREBUILT:=$(CURDIR)/files/prebuilt/aarch64/dae
 else
   DAE_PREBUILT:=
