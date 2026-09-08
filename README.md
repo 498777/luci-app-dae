@@ -76,14 +76,25 @@ apk add v2ray-geoip v2ray-geosite
 
 ## 编译与发布
 
+构建分两段（见 `.github/workflows/build-apk.yml`）：
+
+1. **预编译 job**：仿上游 kdae `seed-build.yml`，在 ubuntu-22.04 + clang-15/llvm-15 +
+   Go 1.26 下交叉编译静态 `dae`（amd64 按 v3、aarch64 一份），产物作为 artifact 传给下一步；
+   dae 核心**不在 OpenWrt SDK 内编译**（kdae 的 eBPF 生成与 SDK 的 bpf-headers 不兼容）。
+2. **打包 job**：OpenWrt SDK 只负责把预编译二进制装进 `dae` 包并编 luci/语言包。
+
 推送 `main`，或在 **Actions → Build apk → Run workflow** 手动触发（SDK 默认
-`openwrt-25.12`）。Release 生成 `dae_<version>`（如 `dae_2026.09.08-r3`）并附 apk。
-每次发布前会自动清空该 tag 的旧附件并对 noarch 包（luci / 语言包）去重，Release 里
-只保留当前这套产物。
-源码树编译：
+`openwrt-25.12`）。Release 生成 `dae_<version>`（如 `dae_2026.09.08-r4`）并附 apk：
+dae 核心每架构一份，noarch 包（luci / 语言包）合并后各一份。每次发布前自动清空
+该 tag 的旧附件。
+
+在完整源码树中手动编 `luci-app-dae` 时，`dae` 包需要本地已存在预编译二进制：
 
 ```sh
 git clone https://github.com/498777/luci-app-dae package/luci-app-dae
+# 先从 Actions 产物或上游 release.yml 产物获取对应二进制，放好后再 make：
+#   package/luci-app-dae/dae/files/prebuilt/x86_64v3/dae   (x86_64)
+#   package/luci-app-dae/dae/files/prebuilt/aarch64/dae     (aarch64)
 ./scripts/feeds update -a && ./scripts/feeds install -a
 make menuconfig   # Network -> Web Servers/Proxies -> luci-app-dae
 make package/dae/compile V=s

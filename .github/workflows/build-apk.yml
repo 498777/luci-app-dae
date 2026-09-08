@@ -52,21 +52,94 @@ jobs:
 
           echo "Version: ${version} / SDK: ${sdk} / Packages: ${packages}"
 
-  build:
-    name: Build ${{ matrix.short }}
-    runs-on: ubuntu-latest
+  build-binary:
+    name: Build binary ${{ matrix.label }}
+    runs-on: ubuntu-22.04
     needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: x86_64v3
+            goarch: amd64
+            goamd64: v3
+          - label: aarch64
+            goarch: arm64
+    steps:
+      - name: Install toolchain
+        run: |
+          sudo -E apt-get update
+          sudo -E apt-get install -y --no-install-recommends clang-15 llvm-15
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Fetch kdae source
+        run: |
+          git clone https://github.com/olicesx/dae.git src
+          cd src
+          git fetch --depth 1 origin 737d94442f1a82da55073cd4c3697e860ce84cc9
+          git checkout FETCH_HEAD
+          git submodule update --init --recursive
+
+      - name: Build dae
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          GOAMD64: ${{ matrix.goamd64 }}
+          CGO_ENABLED: '0'
+          GOFLAGS: -trimpath -modcacherw
+          GOEXPERIMENT: newinliner,simd,heapminimum512kib,randomizedheapbase64
+          VERSION: ${{ needs.prepare.outputs.version }}
+          CLANG: clang-15
+          STRIP: llvm-strip-15
+          OUTPUT: /home/runner/work/dae-out
+        run: |
+          cd src
+          make
+          ls -lh /home/runner/work/dae-out
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dae-${{ matrix.label }}
+          path: /home/runner/work/dae-out
+          if-no-files-found: error
+          retention-days: 1
+
+  build:
+    name: Build apk ${{ matrix.short }}
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - build-binary
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x86_64
             short: x86_64v3
+            binlabel: x86_64v3
           - arch: aarch64_generic
             short: aarch64
+            binlabel: aarch64
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Fetch prebuilt binary
+        uses: actions/download-artifact@v4
+        with:
+          name: dae-${{ matrix.binlabel }}
+          path: bin-tmp
+
+      - name: Place binary into package
+        run: |
+          mkdir -p dae/files/prebuilt/${{ matrix.binlabel }}
+          cp bin-tmp/dae-out dae/files/prebuilt/${{ matrix.binlabel }}/dae
+          chmod 755 dae/files/prebuilt/${{ matrix.binlabel }}/dae
+          ls -l dae/files/prebuilt/${{ matrix.binlabel }}/dae
 
       - name: Build packages
         uses: sbwml/openwrt-gh-action-sdk@go1.26
