@@ -49,5 +49,7 @@ jobs:
           git add dae/upstream.commit dae/Makefile
           git commit -m "dae: sync upstream kdae @ ${sha:0:7}"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" main
+          sleep 5
+          gh workflow run "Build apk" --repo "$GITHUB_REPOSITORY" --ref main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
