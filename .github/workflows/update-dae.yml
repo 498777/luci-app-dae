@@ -23,17 +23,19 @@ jobs:
         id: cmp
         run: |
           head=$(git ls-remote https://github.com/olicesx/dae.git refs/heads/kdae | awk '{print $1}')
-          cur=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
-          want="$(date +%Y.%m.%d)"
+          short=$(printf '%.7s' "$head")
+          cur=$(grep '^KDAE_COMMIT:=' dae/Makefile | head -n 1 | cut -d= -f2)
           echo "upstream = $head"
+          echo "short    = $short"
           echo "recorded = $cur"
-          echo "want     = $want"
           if [ -z "$head" ]; then
             echo "failed to fetch upstream HEAD"
             exit 1
           fi
-          if [ "$want" != "$cur" ]; then
-            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${want}/" dae/Makefile
+          if [ "$short" != "$cur" ]; then
+            today=$(date +%Y.%m.%d)
+            sed -i "s/^KDAE_COMMIT:=.*/KDAE_COMMIT:=${short}/" dae/Makefile
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${today}/" dae/Makefile
             sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" dae/Makefile
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
@@ -44,11 +46,12 @@ jobs:
         if: steps.cmp.outputs.changed == 'true'
         run: |
           ver=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
-          echo "Syncing to ${ver}"
+          sha=$(grep '^KDAE_COMMIT:=' dae/Makefile | head -n 1 | cut -d= -f2)
+          echo "Syncing to ${sha} (${ver})"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add dae/Makefile
-          git commit -m "dae: sync upstream kdae @ ${ver}"
+          git commit -m "dae: sync upstream kdae @ ${sha} (${ver})"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" main
           sleep 5
           gh workflow run "Build apk" --repo "$GITHUB_REPOSITORY" --ref main
