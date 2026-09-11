@@ -25,15 +25,17 @@ jobs:
           head=$(git ls-remote https://github.com/olicesx/dae.git refs/heads/kdae | awk '{print $1}')
           short=$(printf '%.7s' "$head")
           cur=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
+          want="0.${short}"
           echo "upstream = $head"
           echo "short    = $short"
           echo "recorded = $cur"
+          echo "want     = $want"
           if [ -z "$head" ]; then
             echo "failed to fetch upstream HEAD"
             exit 1
           fi
-          if [ "$short" != "$cur" ]; then
-            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${short}/" dae/Makefile
+          if [ "$want" != "$cur" ]; then
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${want}/" dae/Makefile
             sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" dae/Makefile
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
