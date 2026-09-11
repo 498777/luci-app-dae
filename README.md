@@ -12,7 +12,7 @@ OpenWrt 上 [dae](https://github.com/daeuniverse/dae)（eBPF 透明代理）的�
 
 - **只出 apk**（OpenWrt 25.x apk 体系）；
 - **不依赖 `vmlinux-btf`**：移除条件依赖与 choice，固定使用内核自带 BTF；
-- **geo 数据随依赖链自动安装**：`dae` 依赖 `dae-geoip`/`dae-geosite`（二者分别依赖 `v2ray-geoip`/`v2ray-geosite`，并自动在 `/usr/share/dae` 建好软链，无需脚本或手动处理）；
+- **geo 数据**：依赖官方 `v2ray-geoip`/`v2ray-geosite`；安装脚本会自动在 `/usr/share/dae` 与 `/usr/share/honk` 建立软链（无需手动）；
 - x86_64 包内二进制按 **GOAMD64=v3** 编译（包架构仍为 `x86_64`）。
 
 ## 一键安装
@@ -23,7 +23,7 @@ curl -fsSL "https://raw.githubusercontent.com/498777/luci-app-dae/main/Auto_Inst
 
 - 默认装全套：`dae` + `luci-app-dae` + 中文语言包；
 - 只装主程序、不带 LuCI：`sh -s dae`；
-- `geoip:`/`geosite:` 所需数据由依赖链 `dae-geoip`/`dae-geosite` → `v2ray-geoip`/`v2ray-geosite` 自动带入（软链由 `dae-geo*` 包创建）；
+- `geoip:`/`geosite:` 所需数据由 `v2ray-geoip`/`v2ray-geosite` 依赖带入；安装脚本自动在 `/usr/share/dae`、`/usr/share/honk` 建软链；
 - 脚本行为：非 apk 体系直接退出；未发现内核 BTF 时给出提示；若包内仍声明
   `vmlinux-btf` 会自动拆包剔除后安装；装完自动刷新 LuCI 缓存；
 - 其它参数（`--repo` 换仓库、`--keep-dep` 原样安装）见脚本帮助（`-h`）。
@@ -54,7 +54,7 @@ uci set dae.config.enabled=1 && uci commit dae
 /etc/init.d/dae start
 ```
 
-`geoip:` / `geosite:` 所需数据由依赖链 `dae-geoip`/`dae-geosite` 自动带入；`/usr/share/dae` 下的软链由这两个包在安装时创建。
+`geoip:` / `geosite:` 所需数据由 `v2ray-geoip`/`v2ray-geosite` 依赖带入；`/usr/share/dae` 与 `/usr/share/honk` 的软链由安装脚本自动创建。
 
 ## 前提与平台说明
 
