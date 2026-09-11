@@ -4,7 +4,7 @@
 
 OpenWrt 上 [dae](https://github.com/daeuniverse/dae)（eBPF 透明代理）的自建打包仓库：
 
-- 二进制：从 [olicesx/dae](https://github.com/olicesx/dae) **kdae** 分支预编译（跟随上游最新提交；`dae/upstream.commit` 记录当前基准，每日由 `update-dae` 工作流自动同步并触发构建）；
+- 二进制：从 [olicesx/dae](https://github.com/olicesx/dae) **kdae** 分支预编译（跟随上游最新提交；版本号取上游 commit 前 7 位，由 `update-dae` 每日检查并自动同步、触发构建）；
 - LuCI：模块化 luasrc 界面（与 luci-app-honk 同构），菜单显示名统一 **DAE**；
 - init：官方精简样式（dae 自带日志轮转，不劫持 `/tmp/resolv.conf`，无订阅 cron）。
 
@@ -78,7 +78,7 @@ uci set dae.config.enabled=1 && uci commit dae
 2. **打包 job**：OpenWrt SDK 只负责把预编译二进制装进 `dae` 包并编 luci/语言包。
 
 推送 `main`，或在 **Actions → Build apk → Run workflow** 手动触发（SDK 默认
-`openwrt-25.12`）。Release 生成 `dae_<version>`（如 `dae_2026.09.08-r4`）并附 apk：
+`openwrt-25.12`）。Release 使用当天日期槽位 `dae_<日期>`，包版本为 `dae-<上游 commit 前 7 位>-rN`（如 `dae-e11f194-r1`）：
 dae 核心每架构一份，luci / 语言包各一份。每次发布前自动清空该 tag 的旧附件。
 
 在完整源码树中手动编 `luci-app-dae` 时，`dae` 包需要本地已存在预编译二进制：
@@ -97,7 +97,6 @@ make package/dae/compile V=s
 
 ```
 dae/                              核心包：默认配置/init（二进制由预编译 job 提供）
-  upstream.commit                 kdae 分支当前基准提交（update-dae 维护）
   files/dae.init                  官方精简启动脚本（参照 dae.txt）
   files/config.dae                拆分配置入口（include config.d/*.dae）
   files/config.d/{dns,node,route}.dae   默认拆分模板

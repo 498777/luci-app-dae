@@ -67,7 +67,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          up="$(cat dae/upstream.commit)"
+          up="$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)"
           src=$(git ls-files -s dae luci-app-dae Makefile | git hash-object --stdin)
           fp="${up}-${src:0:12}"
           echo "fp=${fp}" >> "$GITHUB_OUTPUT"
