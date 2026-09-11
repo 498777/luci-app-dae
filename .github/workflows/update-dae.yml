@@ -34,9 +34,16 @@ jobs:
           fi
           if [ "$short" != "$cur" ]; then
             today=$(date +%Y.%m.%d)
+            cur_ver=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
+            cur_rel=$(grep '^PKG_RELEASE:=' dae/Makefile | head -n 1 | cut -d= -f2)
+            if [ "$today" = "$cur_ver" ]; then
+              next_rel=$((cur_rel + 1))
+            else
+              next_rel=1
+            fi
             sed -i "s/^KDAE_COMMIT:=.*/KDAE_COMMIT:=${short}/" dae/Makefile
             sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${today}/" dae/Makefile
-            sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" dae/Makefile
+            sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=${next_rel}/" dae/Makefile
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
