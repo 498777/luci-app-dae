@@ -4,7 +4,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=dae
 PKG_VERSION:=2026.09.10
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_LICENSE:=AGPL-3.0-only
 PKG_LICENSE_FILE:=LICENSE
@@ -22,7 +22,7 @@ define Package/dae
   URL:=https://github.com/olicesx/dae
   TITLE:=A lightweight and high-performance transparent proxy solution
   DEPENDS:=+ca-bundle +kmod-sched-core +kmod-sched-bpf \
-    +kmod-veth +@KERNEL_XDP_SOCKETS +v2ray-geoip +v2ray-geosite
+    +kmod-veth +@KERNEL_XDP_SOCKETS +dae-geoip +dae-geosite
 endef
 
 define Package/dae/description

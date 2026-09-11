@@ -314,23 +314,6 @@ while IFS='|' read -r u n; do
 done < "$DECIDED"
 rm -f "$PLANFILE" "$DECIDED"
 
-# 只要 /usr/share/v2ray 下有 geo 数据就为 dae 建软链（不代装 v2ray-geoip/geosite）
-mkdir -p /usr/share/dae
-linked=0
-if [ -f /usr/share/v2ray/geoip.dat ]; then
-    ln -sf /usr/share/v2ray/geoip.dat /usr/share/dae/geoip.dat
-    linked=1
-fi
-if [ -f /usr/share/v2ray/geosite.dat ]; then
-    ln -sf /usr/share/v2ray/geosite.dat /usr/share/dae/geosite.dat
-    linked=1
-fi
-if [ "$linked" -eq 1 ]; then
-    ok "已在 /usr/share/dae 建立 geo 软链"
-else
-    echo "⚠ 未发现 /usr/share/v2ray 下的 geo 数据。若规则用到 geoip:/geosite:，"
-    echo "  需先自行安装官方包：apk add v2ray-geoip v2ray-geosite（本脚本不代装），再重跑本脚本即可建链。"
-fi
 
 echo ""
 info "刷新 LuCI 缓存 ..."
@@ -348,6 +331,5 @@ echo ""
 echo "下一步："
 echo "  1. LuCI 界面：服务 → DAE（若看不到请清浏览器缓存或重新登录）"
 echo "  2. 命令行启用：uci set dae.config.enabled=1; uci commit dae; /etc/init.d/dae start"
-echo "  3. 若配置规则用到 geoip:/geosite:，需 /usr/share/v2ray 下有对应数据（官方 v2ray-geoip/geosite），脚本会自动建 /usr/share/dae 软链"
-echo "  4. 首次使用请先在 Node Settings 页签（或 /etc/dae/config.d/node.dae）"
+echo "  3. 首次使用请先在 Node Settings 页签（或 /etc/dae/config.d/node.dae）"
 echo "     把示例节点/订阅替换成自己的，再启用服务，否则 dae validate 会拒绝启动"
