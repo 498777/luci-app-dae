@@ -10,6 +10,12 @@ PLANFILE="/tmp/dae-plan.$$"
 DECIDED="/tmp/dae-decide.$$"
 PKGS=""
 
+# 自愈：清理 /etc/apk/world 中遗留的 /tmp 路径条目（旧版脚本安装留下的）
+if [ -f /etc/apk/world ] && grep -q '/tmp/' /etc/apk/world 2>/dev/null; then
+    sed -i '/\/tmp\//d' /etc/apk/world
+    echo "ℹ 已清理 /etc/apk/world 中的 /tmp 悬空条目"
+fi
+
 usage() {
     cat <<'EOF'
 用法：
@@ -229,6 +235,23 @@ strip_apk_dep() {
     return 0
 }
 
+install_local_apk() {
+    f="$1"
+    [ -f "$f" ] || return 1
+    if apk add --allow-untrusted "$f"; then
+        :
+    else
+        echo "  ⚠ 常规安装失败，尝试 --force-broken-world"
+        apk add --allow-untrusted --force-broken-world "$f" || return 1
+    fi
+    # apk 会把本地文件路径写进 /etc/apk/world，留着下次安装会报 no such package —— 装完即清
+    if [ -f /etc/apk/world ]; then
+        sed -i "\|^$f\$|d" /etc/apk/world 2>/dev/null || true
+    fi
+    ok "$(basename "$f") 安装完成"
+    return 0
+}
+
 install_url() {
     url="$1"
     [ -n "$url" ] || return 1
@@ -239,15 +262,7 @@ install_url() {
     strip_apk_dep "/tmp/$file"
 
     echo "  ⬇ 安装 $file"
-    if apk add --allow-untrusted "/tmp/$file"; then
-        :
-    else
-        echo "  ⚠ 常规安装失败，尝试 --force-broken-world"
-        apk add --allow-untrusted --force-broken-world "/tmp/$file" || {
-            rm -f "/tmp/$file"; echo "✗ 安装失败"; return 1; }
-    fi
-    rm -f "/tmp/$file"
-    ok "$file 安装完成"
+    install_local_apk "/tmp/$file" || { rm -f "/tmp/$file"; return 1; }
     return 0
 }
 
