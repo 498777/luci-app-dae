@@ -25,7 +25,7 @@ jobs:
           head=$(git ls-remote https://github.com/olicesx/dae.git refs/heads/kdae | awk '{print $1}')
           short=$(printf '%.7s' "$head")
           cur=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
-          want="0.${short}"
+          want="2.0.0.${short}"
           echo "upstream = $head"
           echo "short    = $short"
           echo "recorded = $cur"
