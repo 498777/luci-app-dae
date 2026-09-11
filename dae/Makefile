@@ -3,7 +3,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=dae
-PKG_VERSION:=2.0.0.e11f194
+PKG_VERSION:=2.0.0_e11f194
 PKG_RELEASE:=1
 
 PKG_LICENSE:=AGPL-3.0-only
