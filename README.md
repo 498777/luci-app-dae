@@ -110,8 +110,10 @@ uci 的 `dae.config.log_maxbackups` / `log_maxsize`。
 
 ## 许可证
 
-**AGPL-3.0-only**，与 `dae/Makefile` 的 `PKG_LICENSE` 一致。上游：dae 源码
-AGPL-3.0（olicesx/dae 派生自 daeuniverse/dae）；LuCI 界面移植自 QiuSimons/luci-app-dae
-（上游未声明许可证，文件头沿用 Apache-2.0 模板注释）；init/打包参考
-immortalwrt/packages net/dae（GPL-2.0，文件头保留版权）。长期公开发布建议请求上游
-补充 LICENSE。
+**AGPL-3.0-only**（与 `dae/Makefile` 的 `PKG_LICENSE` 一致）。上游 dae 源码 AGPL-3.0（olicesx/dae 派生自 daeuniverse/dae）；LuCI 界面移植自 QiuSimons/luci-app-dae。
+
+## 鸣谢
+
+- [daeuniverse/dae](https://github.com/daeuniverse/dae) 及其贡献者（dae 引擎）；[olicesx/dae](https://github.com/olicesx/dae)（kdae 分支，本仓库二进制来源）；[QiuSimons/luci-app-dae](https://github.com/QiuSimons/luci-app-dae)（LuCI 界面移植来源）；
+- 本仓库（498777）：负责打包与每日同步上游；
+- [OpenWrt LuCI](https://github.com/openwrt/luci) 框架与 luci-app 基础设施，luci-app 应用模板（luci-app-template）作为本 LuCI 界面的骨架参考。
