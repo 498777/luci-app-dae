@@ -53,8 +53,8 @@ jobs:
           version="${pkg_version}-r${pkg_release}"
           echo "version=${version}"                >> "$GITHUB_OUTPUT"
           rel_date=$(date -u +%Y.%m.%d)
-          echo "release_tag=dae_${rel_date}"        >> "$GITHUB_OUTPUT"
-          echo "release_name=dae_${rel_date}"       >> "$GITHUB_OUTPUT"
+          echo "release_tag=dae-kdae_${rel_date}"   >> "$GITHUB_OUTPUT"
+          echo "release_name=dae-kdae_${rel_date}"  >> "$GITHUB_OUTPUT"
           echo "sdk=${sdk}"                        >> "$GITHUB_OUTPUT"
           echo "packages=${packages}"              >> "$GITHUB_OUTPUT"
           luci_version="$(grep '^PKG_VERSION:=' luci-app-dae/Makefile | head -n 1 | cut -d= -f2)-r$(grep '^PKG_RELEASE:=' luci-app-dae/Makefile | head -n 1 | cut -d= -f2)"
