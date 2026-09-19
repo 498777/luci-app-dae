@@ -3,8 +3,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=dae
-PKG_VERSION:=2026.09.18
-KDAE_COMMIT:=4502be7
+PKG_VERSION:=2026.09.19
+DAE_COMMIT:=fb5eae6
 PKG_RELEASE:=1
 
 PKG_LICENSE:=AGPL-3.0-only
@@ -12,7 +12,7 @@ PKG_LICENSE_FILE:=LICENSE
 
 include $(INCLUDE_DIR)/package.mk
 
-# dae 核心由 GitHub Actions 的预编译 job 产出（仿 kdae seed-build：ubuntu + clang-15 +
+# dae 核心由 GitHub Actions 的预编译 job 产出（仿上游 seed-build：ubuntu + clang-15 +
 # Go 1.26 + submodule 头文件交叉编译静态二进制），见 .github/workflows/build-apk.yml。
 # 打包时直接使用 dae/files/prebuilt/<arch>/dae，不在 OpenWrt SDK 内编译。
 
@@ -20,7 +20,7 @@ define Package/dae
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=Web Servers/Proxies
-  URL:=https://github.com/olicesx/dae
+  URL:=https://github.com/daeuniverse/dae
   TITLE:=A lightweight and high-performance transparent proxy solution
   DEPENDS:=+ca-bundle +kmod-sched-core +kmod-sched-bpf \
     +kmod-veth +@KERNEL_XDP_SOCKETS +v2ray-geoip +v2ray-geosite

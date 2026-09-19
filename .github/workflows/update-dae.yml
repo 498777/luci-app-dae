@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   sync:
-    name: Sync upstream kdae
+    name: Sync upstream dae (main)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,12 +19,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Compare upstream kdae HEAD
+      - name: Compare upstream dae HEAD
         id: cmp
         run: |
-          head=$(git ls-remote https://github.com/olicesx/dae.git refs/heads/kdae | awk '{print $1}')
+          head=$(git ls-remote https://github.com/daeuniverse/dae.git refs/heads/main | awk '{print $1}')
           short=$(printf '%.7s' "$head")
-          cur=$(grep '^KDAE_COMMIT:=' dae/Makefile | head -n 1 | cut -d= -f2)
+          cur=$(grep '^DAE_COMMIT:=' dae/Makefile | head -n 1 | cut -d= -f2)
           echo "upstream = $head"
           echo "short    = $short"
           echo "recorded = $cur"
@@ -41,7 +41,7 @@ jobs:
             else
               next_rel=1
             fi
-            sed -i "s/^KDAE_COMMIT:=.*/KDAE_COMMIT:=${short}/" dae/Makefile
+            sed -i "s/^DAE_COMMIT:=.*/DAE_COMMIT:=${short}/" dae/Makefile
             sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${today}/" dae/Makefile
             sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=${next_rel}/" dae/Makefile
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -53,12 +53,12 @@ jobs:
         if: steps.cmp.outputs.changed == 'true'
         run: |
           ver=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
-          sha=$(grep '^KDAE_COMMIT:=' dae/Makefile | head -n 1 | cut -d= -f2)
+          sha=$(grep '^DAE_COMMIT:=' dae/Makefile | head -n 1 | cut -d= -f2)
           echo "Syncing to ${sha} (${ver})"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add dae/Makefile
-          git commit -m "dae: sync upstream kdae @ ${sha} (${ver})"
+          git commit -m "dae: sync upstream dae @ ${sha} (${ver})"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" main
           sleep 5
           gh workflow run "Build apk" --repo "$GITHUB_REPOSITORY" --ref main
