@@ -1,3 +1,8 @@
+# kdae 线：本工作流只把上游 olicesx/dae 的 kdae 提交同步进 dae/Makefile，
+# 不自动触发构建、也不发布 Release —— 避免与本仓库 main 线的 Release 互相挤占
+# （两条线共用 "只保留最近 N 个 Release" 的清理名额）。
+# 需要发布 kdae 包时：Actions → "Build apk" → Run workflow → ref 选 kdae；
+# 产物 tag 为 dae-kdae_<日期>，与 main 线的 dae_<日期> 区分。
 name: Update dae version
 
 on:
@@ -49,7 +54,7 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit and push
+      - name: Commit and push（不自动构建）
         if: steps.cmp.outputs.changed == 'true'
         run: |
           ver=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
@@ -60,8 +65,7 @@ jobs:
           git add dae/Makefile
           git commit -m "dae: sync upstream kdae @ ${sha} (${ver})"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${BRANCH}"
-          sleep 5
-          gh workflow run "Build apk" --repo "$GITHUB_REPOSITORY" --ref "${BRANCH}"
+          echo "kdae 线不自动构建；如需发布 kdae 包，请在 Actions 手动 dispatch \"Build apk\"（ref=kdae）"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ github.ref_name }}
