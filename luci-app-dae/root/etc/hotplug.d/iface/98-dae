@@ -40,6 +40,13 @@ echo "$my_gen" > "$DEBOUNCE_FILE"
     [ "$(cat "$DEBOUNCE_FILE" 2>/dev/null)" = "$my_gen" ] || exit 0
 
     if /etc/init.d/dae running; then
+        # 接口地址未变化时不 reload，避免白推进 routing generation
+        STATE_FILE="/tmp/run/dae_hotplug_state"
+        fp="$(ip -o addr show dev "$WAN_IF" 2>/dev/null | awk '{print $4}' | tr '\n' ' ')$(ip -o addr show dev "$LAN_IF" 2>/dev/null | awk '{print $4}' | tr '\n' ' ')"
+        if [ -f "$STATE_FILE" ] && [ "$(cat "$STATE_FILE" 2>/dev/null)" = "$fp" ]; then
+            exit 0
+        fi
+        printf '%s' "$fp" > "$STATE_FILE"
         /etc/init.d/dae hot_reload
     else
         /etc/init.d/dae start
