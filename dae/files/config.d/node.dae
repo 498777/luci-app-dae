@@ -6,8 +6,9 @@ node {
 subscription {
     my_sub: 'https://www.example.com/subscription/link'
 }
+# 组名需与 route.dae 中引用的出站名一致（本示例对应 fallback: proxy）
 group {
-    my_group {
+    proxy {
         filter: subtag(my_sub) && !name(keyword: 'ExpireAt:')
         filter: subtag(my_sub2)
         policy: min_moving_avg

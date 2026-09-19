@@ -1,6 +1,16 @@
+# route.dae
 routing {
-    pname(dnsmasq, zerotier-one) -> must_direct
+    # dnsmasq 若另有外部 :53 上游，本条让那些查询走原生路径、不进 dae 的 DNS 控制器。
+    # zerotier 单列一条：合并成 pname(dnsmasq, zerotier-one) 会把它的放行一并收窄到 dport(53)。
+    # direct(must) 与旧写法 must_direct 等价，dae v2.1.1 两者都接受。
+    pname(dnsmasq) && l4proto(udp) && dport(53) -> direct(must)
+    pname(zerotier-one) -> direct(must)
     dip(224.0.0.0/3, 'ff00::/8') -> direct
     dip(10.0.0.0/8, 100.64.0.0/10, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16) -> direct
+    dport(123) -> direct
+
+    # 广告阻止
+    domain(geosite:category-ads-all) -> block
+
     fallback: proxy
 }
