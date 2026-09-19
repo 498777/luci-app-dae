@@ -1,6 +1,10 @@
 #!/bin/sh
 
 REPO="${REPO:-498777/luci-app-dae}"
+# Release tag 前缀：本仓库有 main（dae_<日期>）与 kdae（dae-kdae_<日期>）两条线，
+# 两者共用同一个 Releases 列表，而 /releases/latest 不区分前缀。本脚本取自 kdae 分支，
+# 故默认装 kdae 线；可用 TAG_PREFIX 覆盖（如设为 dae_ 则装 main 线）。
+TAG_PREFIX="${TAG_PREFIX:-dae-kdae_}"
 STRIP_DEPS="vmlinux-btf"
 LANGS="zh-cn zh_Hans zh_cn"
 TMPDIR_WORK="${TMPDIR:-/tmp}/dae-install.$$"
@@ -37,6 +41,7 @@ usage() {
   --gh-proxy [URL]      指定 GitHub 加速前缀（默认 https://ghfast.top；也可 export GH_PROXY=...）
   --keep-dep            不剔除 vmlinux-btf 依赖，原样安装
   -h, --help            显示本帮助
+                        （Release tag 前缀取环境变量 TAG_PREFIX，默认 dae-kdae_；main 线为 dae_）
   <包名>...             指定要装的包，留空则装 dae + luci-app-dae + 中文语言包
                         （指定 luci-app-dae 时会自动补上 dae 与中文语言包）
 
@@ -102,12 +107,18 @@ fi
 info "查询最新 Release ..."
 
 get_latest_tag() {
+    # 快路径：/releases/latest 的 Location 头 —— 仅当它属于本线前缀时才采用
     loc=$(curl -fsSI --max-time 20 "$(gurl "https://github.com/$REPO/releases/latest")" 2>/dev/null \
         | tr -d '\r' | sed -n 's#^[Ll]ocation: .*/releases/tag/##p')
-    if [ -z "$loc" ]; then
-        page=$(curl -fsSL --max-time 30 "$(gurl "https://github.com/$REPO/releases")" 2>/dev/null)
-        loc=$(printf '%s' "$page" | grep -oE '/releases/tag/[^"?]+' | head -1 | sed 's#.*/tag/##')
-    fi
+    case "$loc" in
+        "${TAG_PREFIX}"[0-9]*) printf '%s' "$loc"; return 0 ;;
+    esac
+    # 慢路径：扫 releases 页，按前缀取最新的一条（页面按时间倒序）
+    page=$(curl -fsSL --max-time 30 "$(gurl "https://github.com/$REPO/releases")" 2>/dev/null)
+    [ -n "$page" ] || return 1
+    loc=$(printf '%s' "$page" \
+        | grep -oE "/releases/tag/${TAG_PREFIX}[0-9][^\"?]+" \
+        | head -1 | sed 's#.*/tag/##')
     [ -n "$loc" ] || return 1
     printf '%s' "$loc"
 }

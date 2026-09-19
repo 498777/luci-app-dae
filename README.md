@@ -18,8 +18,11 @@ OpenWrt 上 [dae](https://github.com/daeuniverse/dae)（eBPF 透明代理）的�
 ## 一键安装
 
 ```sh
-curl -fsSL "https://raw.githubusercontent.com/498777/luci-app-dae/main/Auto_Install_Script.sh" | sh -s luci-app-dae
+curl -fsSL "https://raw.githubusercontent.com/498777/luci-app-dae/kdae/Auto_Install_Script.sh" | sh -s luci-app-dae
 ```
+
+> 本分支（`kdae`）的脚本默认装 **kdae 线**的 Release（tag 前缀 `dae-kdae_`）；
+> 若要装 `main` 线，改用上面的 `main` 分支 URL，或设 `TAG_PREFIX=dae_`。
 
 - 默认装全套：`dae` + `luci-app-dae` + 中文语言包；
 - 只装主程序、不带 LuCI：`sh -s dae`；
