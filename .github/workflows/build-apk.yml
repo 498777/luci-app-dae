@@ -122,13 +122,18 @@ jobs:
       - name: Fetch upstream dae release binary
         env:
           TAG: ${{ needs.prepare.outputs.dae_release }}
+          ASSET: ${{ matrix.asset }}
         run: |
           set -euo pipefail
-          url="https://github.com/daeuniverse/dae/releases/download/${TAG}/${{ matrix.asset }}"
-          echo "downloading ${url}"
+          url="https://github.com/daeuniverse/dae/releases/download/${TAG}/${ASSET}"
+          echo "TAG='${TAG}'  ASSET='${ASSET}'"
+          echo "url=${url}"
           mkdir -p "$RUNNER_TEMP/dae-rel"
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/dae.tar.xz" "$url"
-          tar -xJf "$RUNNER_TEMP/dae.tar.xz" -C "$RUNNER_TEMP/dae-rel" usr/bin/dae
+          ls -l "$RUNNER_TEMP/dae.tar.xz"
+          echo "--- archive 内容 ---"
+          tar -tJf "$RUNNER_TEMP/dae.tar.xz"
+          tar -xJf "$RUNNER_TEMP/dae.tar.xz" -C "$RUNNER_TEMP/dae-rel"
           mkdir -p dae/files/prebuilt/${{ matrix.binlabel }}
           install -m 755 "$RUNNER_TEMP/dae-rel/usr/bin/dae" dae/files/prebuilt/${{ matrix.binlabel }}/dae
           ls -l dae/files/prebuilt/${{ matrix.binlabel }}/dae
