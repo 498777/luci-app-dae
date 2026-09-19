@@ -19,30 +19,34 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Compare upstream dae HEAD
+      - name: Compare upstream dae release
         id: cmp
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          head=$(git ls-remote https://github.com/daeuniverse/dae.git refs/heads/main | awk '{print $1}')
-          short=$(printf '%.7s' "$head")
-          cur=$(grep '^DAE_COMMIT:=' dae/Makefile | head -n 1 | cut -d= -f2)
-          echo "upstream = $head"
-          echo "short    = $short"
-          echo "recorded = $cur"
-          if [ -z "$head" ]; then
-            echo "failed to fetch upstream HEAD"
+          tag="$(gh release view --repo daeuniverse/dae --json tagName --jq '.tagName // ""' 2>/dev/null || true)"
+          if [ -z "$tag" ]; then
+            echo "failed to resolve upstream release tag"
             exit 1
           fi
-          if [ "$short" != "$cur" ]; then
-            today=$(date +%Y.%m.%d)
-            cur_ver=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
-            cur_rel=$(grep '^PKG_RELEASE:=' dae/Makefile | head -n 1 | cut -d= -f2)
-            if [ "$today" = "$cur_ver" ]; then
+          ver="${tag#v}"
+          cur="$(grep '^DAE_RELEASE:=' dae/Makefile | head -n 1 | cut -d= -f2)"
+          echo "upstream release = $tag  (version ${ver})"
+          echo "recorded         = ${cur:-<none>}"
+          case "$ver" in
+            [0-9]*) ;;
+            *) echo "::error::upstream version '${ver}' 不以数字开头，apk 不接受"; exit 1 ;;
+          esac
+          if [ "$tag" != "$cur" ]; then
+            cur_ver="$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)"
+            cur_rel="$(grep '^PKG_RELEASE:=' dae/Makefile | head -n 1 | cut -d= -f2)"
+            if [ "$ver" = "$cur_ver" ]; then
               next_rel=$((cur_rel + 1))
             else
               next_rel=1
             fi
-            sed -i "s/^DAE_COMMIT:=.*/DAE_COMMIT:=${short}/" dae/Makefile
-            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${today}/" dae/Makefile
+            sed -i "s/^DAE_RELEASE:=.*/DAE_RELEASE:=${tag}/" dae/Makefile
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${ver}/" dae/Makefile
             sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=${next_rel}/" dae/Makefile
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
@@ -53,12 +57,12 @@ jobs:
         if: steps.cmp.outputs.changed == 'true'
         run: |
           ver=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
-          sha=$(grep '^DAE_COMMIT:=' dae/Makefile | head -n 1 | cut -d= -f2)
-          echo "Syncing to ${sha} (${ver})"
+          tag=$(grep '^DAE_RELEASE:=' dae/Makefile | head -n 1 | cut -d= -f2)
+          echo "Syncing to ${tag} (${ver})"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add dae/Makefile
-          git commit -m "dae: sync upstream dae @ ${sha} (${ver})"
+          git commit -m "dae: sync upstream release ${tag} (${ver})"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${BRANCH}"
           sleep 5
           gh workflow run "Build apk" --repo "$GITHUB_REPOSITORY" --ref "${BRANCH}"

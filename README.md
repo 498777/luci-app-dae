@@ -4,7 +4,7 @@
 
 OpenWrt 上 [dae](https://github.com/daeuniverse/dae)（eBPF 透明代理）的自建打包仓库：
 
-- 二进制：从 [daeuniverse/dae](https://github.com/daeuniverse/dae) **main** 分支预编译（跟随上游最新提交；版本号取同步日期 `YYYY.MM.DD`，由 `update-dae` 每日检查并自动同步、触发构建）；
+- 二进制：直接取 [daeuniverse/dae](https://github.com/daeuniverse/dae) **release** 的预编译产物（`dae-linux-x86_64_v3_avx2.tar.xz` / `dae-linux-arm64.tar.xz` 内的 `usr/bin/dae`，静态链接、musl 可直接运行）；版本跟随上游 release（`PKG_VERSION` = 上游 tag 去掉 `v`），由 `update-dae` 每日检查并自动同步、触发构建；
 - LuCI：模块化 luasrc 界面（与 luci-app-honk 同构），菜单显示名统一 **DAE**；
 - init：官方精简样式（dae 自带日志轮转，不劫持 `/tmp/resolv.conf`，无订阅 cron）。
 
@@ -72,13 +72,14 @@ uci set dae.config.enabled=1 && uci commit dae
 
 构建分两段（见 `.github/workflows/build-apk.yml`）：
 
-1. **预编译 job**：仿上游 `seed-build.yml`，在 ubuntu-22.04 + clang-15/llvm-15 +
-   Go 1.26 下交叉编译静态 `dae`（amd64 按 v3、aarch64 一份），产物作为 artifact 传给下一步；
+1. **取核心二进制**：从上游 release 下载预编译静态 `dae`
+   （x86_64 取 `dae-linux-x86_64_v3_avx2.tar.xz`，aarch64 取 `dae-linux-arm64.tar.xz`），
+   解出 `usr/bin/dae` 放入 `dae/files/prebuilt/<arch>/dae`；
    dae 核心**不在 OpenWrt SDK 内编译**（上游的 eBPF 生成与 SDK 的 bpf-headers 不兼容）。
 2. **打包 job**：OpenWrt SDK 只负责把预编译二进制装进 `dae` 包并编 luci/语言包。
 
 推送 `main`，或在 **Actions → Build apk → Run workflow** 手动触发（SDK 默认
-`openwrt-25.12`）。Release 使用当天日期槽位 `dae_<日期>`，包版本为 `dae-<YYYY.MM.DD>-rN`（同步日期 + 同日序号；apk 要求版本以数字开头，日期制天然满足）：
+`openwrt-25.12`）。Release 使用当天日期槽位 `dae_<日期>`，包版本为 `dae-<上游版本>-rN`（上游 tag 去掉 `v`，如同步 `v2.1.1` 则包版本为 `dae-2.1.1-r1`；apk 要求版本以数字开头）：
 dae 核心每架构一份，luci / 语言包各一份。每次发布前自动清空该 tag 的旧附件。
 
 在完整源码树中手动编 `luci-app-dae` 时，`dae` 包需要本地已存在预编译二进制：
@@ -101,8 +102,8 @@ dae/                              核心包：默认配置/init（二进制由�
   files/config.dae                拆分配置入口（include config.d/*.dae）
   files/config.d/{dns,node,route}.dae   默认拆分模板
 luci-app-dae/                     LuCI 模块化界面（luasrc：controller/cbi/view/po）
-.github/workflows/build-apk.yml   预编译 dae 二进制 + 编译 apk 并发布 Release
-.github/workflows/update-dae.yml  每日同步上游 dae main 提交并自动 bump 版本
+.github/workflows/build-apk.yml   取上游 release 二进制 + 编译 apk 并发布 Release
+.github/workflows/update-dae.yml  每日检查上游 dae release 并自动 bump 版本
 ```
 
 日志：`/var/log/dae/dae.log`，轮转由 dae 的 `--logfile-maxbackups/-maxsize` 控制，对应

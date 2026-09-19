@@ -3,8 +3,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=dae
-PKG_VERSION:=2026.09.19
-DAE_COMMIT:=fb5eae6
+PKG_VERSION:=2.1.1
+DAE_RELEASE:=v2.1.1
 PKG_RELEASE:=1
 
 PKG_LICENSE:=AGPL-3.0-only
@@ -12,8 +12,9 @@ PKG_LICENSE_FILE:=LICENSE
 
 include $(INCLUDE_DIR)/package.mk
 
-# dae 核心由 GitHub Actions 的预编译 job 产出（仿上游 seed-build：ubuntu + clang-15 +
-# Go 1.26 + submodule 头文件交叉编译静态二进制），见 .github/workflows/build-apk.yml。
+# dae 核心直接取上游 daeuniverse/dae release 的预编译静态二进制
+# （dae-linux-x86_64_v3_avx2.tar.xz / dae-linux-arm64.tar.xz 内的 usr/bin/dae，
+# 静态 ELF，musl 可直接运行），见 .github/workflows/build-apk.yml。
 # 打包时直接使用 dae/files/prebuilt/<arch>/dae，不在 OpenWrt SDK 内编译。
 
 define Package/dae
