@@ -182,7 +182,11 @@ jobs:
           GOAMD64: ${{ matrix.goamd64 }}
           CGO_ENABLED: '0'
           GOFLAGS: -trimpath -modcacherw
-          GOEXPERIMENT: newinliner,simd,heapminimum512kib,randomizedheapbase64
+          # 该变量由上游 Makefile 单一持有（DEFAULT_GOEXPERIMENT）。上游
+          # scripts/check-build-env.sh 用 git grep 拒绝 .github/ 与 Dockerfile 里
+          # 任何对它赋值的写法（连注释里的字面量也会命中），所以此处既不声明也不
+          # 覆盖：make 会把 DEFAULT_GOEXPERIMENT 合并进其内部变量并自动导出，
+          # 使构建结果与 `make -s print-goexperiment` 保持一致。
           VERSION: ${{ needs.prepare.outputs.version }}
           CLANG: clang-15
           STRIP: llvm-strip-15
