@@ -30,7 +30,7 @@ curl -fsSL "https://raw.githubusercontent.com/498777/luci-app-dae/main/Auto_Inst
 
 默认安装 `dae` + `luci-app-dae` + 中文语言包；`sh -s dae` 只装主程序。
 
-脚本行为：非 apk 体系直接退出；未发现内核 BTF 时给出提示；从 Release 拉取 `SHA256SUMS` 并对每个下载的 apk 做 sha256 校验（Release 未附校验文件时跳过并提示）；包内若仍声明 `vmlinux-btf`，会拆包剔除后再安装；安装完成后自动刷新 LuCI 缓存。其余参数（`--repo`、`--no-proxy`、`--gh-proxy`、`--keep-dep` 等）见脚本 `-h`。
+脚本行为：非 apk 体系直接退出；未发现内核 BTF 时给出提示；从 Release 拉取 `SHA256SUMS` 并对每个下载的 apk 做 sha256 校验（Release 未附校验文件时跳过并提示）；**不对下载的 apk 做任何改写**（`vmlinux-btf` 依赖由 CI 的 Makefile 断言保证，见 build-apk.yml 的 Assert 步骤）；安装完成后自动刷新 LuCI 缓存。其余参数（`--repo`、`--no-proxy`、`--gh-proxy`、`--force` 等）见脚本 `-h`。
 
 `geoip:` / `geosite:` 所需数据由 `v2ray-geoip` / `v2ray-geosite` 依赖带入，`/usr/share/dae` 的软链由安装脚本自动创建。
 
@@ -47,7 +47,7 @@ uci set dae.config.enabled=1 && uci commit dae
 
 - **BTF**：dae 是 eBPF CO-RE 程序，内核需开启 `CONFIG_DEBUG_INFO_BTF`（官方 25.x 的 x86_64 / armsr 默认开启）。未开启时 dae 可安装但无法启动；CI 有 Assert 步骤保证产物不含 `vmlinux-btf` 依赖。
 - **geo 数据**：dae 本体不依赖 geo 文件，只有规则引用 `geoip:` / `geosite:` 时才需要。默认配置含 geo 规则，安装官方 `v2ray-geoip` / `v2ray-geosite` 即可（文件位于 `/usr/share/v2ray/`，dae 默认 geo 目录自动兼容）。
-- **x86_64v3**：官方 OpenWrt / ImmortalWrt 没有 `x86_64_v3` 架构或 SDK，v3 只是同一 amd64 的 `GOAMD64` 档位（上游亦如此）。本仓库包架构为 `x86_64`、二进制按 v3 编译，需要 CPU 支持 AVX2 / BMI（2013+ Intel Haswell、2015+ AMD Excavator）。老 CPU 上运行会触发 SIGILL，将 `dae/Makefile` 的 `export GOAMD64=v3` 改为 `v1` 重新编译即可规避；`aarch64` 不受影响。
+- **x86_64v3**：官方 OpenWrt / ImmortalWrt 没有 `x86_64_v3` 架构或 SDK，v3 只是同一 amd64 的 `GOAMD64` 档位（上游亦如此）。本仓库包架构为 `x86_64`、二进制按 v3 编译，需要 CPU 支持 AVX2 / BMI（2013+ Intel Haswell、2015+ AMD Excavator）。老 CPU 上运行会触发 SIGILL —— 本仓库**不编译** dae（直接取上游预编译产物），没有本地开关可改，需改用上游的 x86_64（非 v3）产物或自行编译；`aarch64` 不受影响。
 
 ## LuCI 界面
 
@@ -101,7 +101,7 @@ luci-app-dae/                      LuCI 界面（htdocs 视图 + menu.d/acl.d + 
 .github/workflows/update-dae.yml   每日检查上游 dae release 并自动 bump 版本
 ```
 
-日志：`/var/log/dae/dae.log`，轮转由 dae 的 `--logfile-maxbackups` / `--maxsize` 控制，对应 uci 的 `dae.config.log_maxbackups` / `log_maxsize`。
+日志：`/var/log/dae/dae.log`，轮转由 dae 的 `--logfile-maxbackups` / `--logfile-maxsize` 控制，对应 uci 的 `dae.config.log_maxbackups` / `log_maxsize`。
 
 ## 第三方前端资源
 

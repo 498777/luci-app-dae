@@ -7,6 +7,13 @@ PKG_VERSION:=2.1.1
 DAE_RELEASE:=v2.1.1
 PKG_RELEASE:=1
 
+# 上游 dae release 预编译产物的 sha256（语义同 honk 的 PKG_HASH，只是 dae 的二进制由
+# .github/workflows/build-apk.yml 下载，所以校验也放在那里，变量名按 arch 区分）。
+# PLACEHOLDER_* 表示尚未回填：此时 workflow 会跳过校验并在日志里打出
+# “实际 sha256 = ...”，把它填回这里即可；上游换 tag 后需要重新回填。
+DAE_HASH_X86_64:=PLACEHOLDER_x86_64
+DAE_HASH_AARCH64:=PLACEHOLDER_aarch64
+
 PKG_LICENSE:=AGPL-3.0-only
 PKG_LICENSE_FILE:=LICENSE
 
