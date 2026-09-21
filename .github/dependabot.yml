@@ -8,3 +8,13 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "ci"
+
+  # kdae 分支单独跟踪（Dependabot 默认只扫默认分支，不加这条会漏掉 kdae）
+  - package-ecosystem: "github-actions"
+    target-branch: "kdae"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
