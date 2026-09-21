@@ -1,0 +1,54 @@
+#!/bin/sh
+
+[ "$ACTION" = "ifup" ] || [ "$ACTION" = "ifupdate" ] || exit 0
+[ "$ACTION" = "ifupdate" ] && [ -z "$IFUPDATE_ADDRESSES" ] && [ -z "$IFUPDATE_DATA" ] && exit 0
+
+UPTIME=$(cut -d. -f1 /proc/uptime 2>/dev/null)
+[ -n "$UPTIME" ] && [ "$UPTIME" -lt 30 ] && exit 0
+
+[ "$(uci -q get dae.config.enabled)" = "1" ] || exit 0
+
+# 接口参数取自配置 global 段的 wan_interface / lan_interface（其值即设备名）。
+CONF_DIR="/etc/dae"
+conf_get() {
+sed -n "s/^[[:space:]]*$1[[:space:]]*:[[:space:]]*//p" "$CONF_DIR"/config.dae "$CONF_DIR"/config.d/*.dae 2>/dev/null \
+| sed 's/#.*$//' | tr -d "\"' \t\r" | sed -n '$p' | cut -d, -f1
+}
+WAN_IF="$(conf_get wan_interface)"
+LAN_IF="$(conf_get lan_interface)"
+[ -z "$LAN_IF" ] || [ "$LAN_IF" = "auto" ] && LAN_IF="br-lan"
+case "$WAN_IF" in
+"" | auto)
+. /lib/functions/network.sh
+network_flush_cache
+network_find_wan NET_IF
+network_get_device WAN_IF "$NET_IF" 2>/dev/null
+[ -z "$WAN_IF" ] && WAN_IF="$NET_IF"
+;;
+esac
+
+[ -n "$DEVICE" ] && [ "$DEVICE" != "$WAN_IF" ] && [ "$DEVICE" != "$LAN_IF" ] && exit 0
+
+DEBOUNCE_FILE="/tmp/run/dae_hotplug_gen"
+mkdir -p /tmp/run
+
+my_gen="$$.$(date +%s)"
+echo "$my_gen" > "$DEBOUNCE_FILE"
+
+(
+    sleep 5
+    [ "$(cat "$DEBOUNCE_FILE" 2>/dev/null)" = "$my_gen" ] || exit 0
+
+    if /etc/init.d/dae running; then
+        # 接口地址未变化时不 reload，避免白推进 routing generation
+        STATE_FILE="/tmp/run/dae_hotplug_state"
+        fp="$(ip -o addr show dev "$WAN_IF" 2>/dev/null | awk '{print $4}' | tr '\n' ' ')$(ip -o addr show dev "$LAN_IF" 2>/dev/null | awk '{print $4}' | tr '\n' ' ')"
+        if [ -f "$STATE_FILE" ] && [ "$(cat "$STATE_FILE" 2>/dev/null)" = "$fp" ]; then
+            exit 0
+        fi
+        printf '%s' "$fp" > "$STATE_FILE"
+        /etc/init.d/dae hot_reload
+    else
+        /etc/init.d/dae start
+    fi
+) &

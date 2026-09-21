@@ -1,0 +1,71 @@
+# kdae 线：本工作流只把上游 olicesx/dae 的 kdae 提交同步进 dae/Makefile，
+# 不自动触发构建、也不发布 Release —— 避免与本仓库 main 线的 Release 互相挤占
+# （两条线共用 "只保留最近 N 个 Release" 的清理名额）。
+# 需要发布 kdae 包时：Actions → "Build apk" → Run workflow → ref 选 kdae；
+# 产物 tag 为 dae-kdae_<日期>，与 main 线的 dae_<日期> 区分。
+name: Update dae version
+
+on:
+  schedule:
+    - cron: '17 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync:
+    name: Sync upstream kdae
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Compare upstream kdae HEAD
+        id: cmp
+        run: |
+          head=$(git ls-remote https://github.com/olicesx/dae.git refs/heads/kdae | awk '{print $1}')
+          short=$(printf '%.7s' "$head")
+          cur=$(grep '^KDAE_COMMIT:=' dae/Makefile | head -n 1 | cut -d= -f2)
+          echo "upstream = $head"
+          echo "short    = $short"
+          echo "recorded = $cur"
+          if [ -z "$head" ]; then
+            echo "failed to fetch upstream HEAD"
+            exit 1
+          fi
+          if [ "$short" != "$cur" ]; then
+            today=$(date +%Y.%m.%d)
+            cur_ver=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
+            cur_rel=$(grep '^PKG_RELEASE:=' dae/Makefile | head -n 1 | cut -d= -f2)
+            if [ "$today" = "$cur_ver" ]; then
+              next_rel=$((cur_rel + 1))
+            else
+              next_rel=1
+            fi
+            sed -i "s/^KDAE_COMMIT:=.*/KDAE_COMMIT:=${short}/" dae/Makefile
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${today}/" dae/Makefile
+            sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=${next_rel}/" dae/Makefile
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push（不自动构建）
+        if: steps.cmp.outputs.changed == 'true'
+        run: |
+          ver=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
+          sha=$(grep '^KDAE_COMMIT:=' dae/Makefile | head -n 1 | cut -d= -f2)
+          echo "Syncing to ${sha} (${ver})"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dae/Makefile
+          git commit -m "dae: sync upstream kdae @ ${sha} (${ver})"
+          git push origin "HEAD:${BRANCH}"
+          echo "kdae 线不自动构建；如需发布 kdae 包，请在 Actions 手动 dispatch \"Build apk\"（ref=kdae）"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.ref_name }}

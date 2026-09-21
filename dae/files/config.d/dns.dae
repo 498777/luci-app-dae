@@ -1,0 +1,18 @@
+dns {
+    optimistic_cache_ttl: 86400
+    max_cache_size: 4096
+    upstream {
+        localdns: 'udp://127.0.0.1:53'
+        overseadns: 'tcp+udp://1.0.0.1:53'
+    }
+    routing {
+        request {
+            qtype(https) -> reject
+            fallback: localdns
+        }
+        response {
+            upstream(overseadns) -> accept
+            fallback: localdns
+        }
+    }
+}
