@@ -1,0 +1,71 @@
+name: Update dae version
+
+on:
+  schedule:
+    - cron: '17 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync:
+    name: Sync upstream dae (main)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Compare upstream dae release
+        id: cmp
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="$(gh release view --repo daeuniverse/dae --json tagName --jq '.tagName // ""' 2>/dev/null || true)"
+          if [ -z "$tag" ]; then
+            echo "failed to resolve upstream release tag"
+            exit 1
+          fi
+          ver="${tag#v}"
+          cur="$(grep '^DAE_RELEASE:=' dae/Makefile | head -n 1 | cut -d= -f2)"
+          echo "upstream release = $tag  (version ${ver})"
+          echo "recorded         = ${cur:-<none>}"
+          case "$ver" in
+            [0-9]*) ;;
+            *) echo "::error::upstream version '${ver}' 不以数字开头，apk 不接受"; exit 1 ;;
+          esac
+          if [ "$tag" != "$cur" ]; then
+            cur_ver="$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)"
+            cur_rel="$(grep '^PKG_RELEASE:=' dae/Makefile | head -n 1 | cut -d= -f2)"
+            if [ "$ver" = "$cur_ver" ]; then
+              next_rel=$((cur_rel + 1))
+            else
+              next_rel=1
+            fi
+            sed -i "s/^DAE_RELEASE:=.*/DAE_RELEASE:=${tag}/" dae/Makefile
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${ver}/" dae/Makefile
+            sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=${next_rel}/" dae/Makefile
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push
+        if: steps.cmp.outputs.changed == 'true'
+        run: |
+          ver=$(grep '^PKG_VERSION:=' dae/Makefile | head -n 1 | cut -d= -f2)
+          tag=$(grep '^DAE_RELEASE:=' dae/Makefile | head -n 1 | cut -d= -f2)
+          echo "Syncing to ${tag} (${ver})"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dae/Makefile
+          git commit -m "dae: sync upstream release ${tag} (${ver})"
+          git push origin "HEAD:${BRANCH}"
+          sleep 5
+          gh workflow run "Build apk" --repo "$GITHUB_REPOSITORY" --ref "${BRANCH}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.ref_name }}

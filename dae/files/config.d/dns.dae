@@ -1,0 +1,31 @@
+# dns.dae
+dns {
+    optimistic_cache: false
+    optimistic_cache_ttl: 60
+    max_cache_size: 0
+    bind: '127.0.0.1:5335'
+    fixed_domain_ttl {
+        ddns.example.org: 60
+    }
+    upstream {
+        cn_53: 'udp://dns.alidns.com:53'
+        ww_53: 'tcp+udp://dns.google:53'
+        cn_h2: 'https://dns.alidns.com:443/dns-query'
+        ww_h2: 'https://dns.google:443/dns-query'
+        cn_h3: 'h3://dns.alidns.com:443/dns-query'
+        ww_h3: 'h3://dns.google:443/dns-query'
+    }
+    routing {
+        request {
+            # qname / qtype  |  reject / asis 均已支持；
+            qname(geosite:category-ads-all) -> reject
+            qname(geosite:private) -> cn_h3
+            qname(geosite:apple@cn) -> cn_h3
+            qname(geosite:category-games-cn) -> cn_h3
+            qname(geosite:category-games@cn) -> cn_h3
+            qname(geosite:geolocation-cn) -> cn_h3
+            qname(geosite:cn) -> cn_h3
+            fallback: ww_h3
+        }
+    }
+}

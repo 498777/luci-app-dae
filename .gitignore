@@ -1,0 +1,10 @@
+*.ipk
+*.apk
+*.o
+*.so
+*.a
+.DS_Store
+*~
+
+# CI 拉取并落地的预编译核心二进制（构建时生成，不入库）
+/dae/files/prebuilt/
