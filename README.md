@@ -8,9 +8,9 @@ OpenWrt 上 [dae](https://github.com/daeuniverse/dae)（eBPF 透明代理）的�
 
 | 部分 | 说明 |
 | --- | --- |
-| 核心包 `dae` | 从 [olicesx/dae](https://github.com/olicesx/dae) 的 **kdae** 分支源码交叉编译静态 `dae`（跟随上游最新提交；版本号取上游 commit 前 7 位并加 `2.0.0_` 前缀，以符合 apk 版本规则） |
+| 核心包 `dae` | 从 [olicesx/dae](https://github.com/olicesx/dae) 的 **kdae** 分支源码交叉编译静态 `dae`。取哪个提交由 `dae/Makefile` 的 `KDAE_COMMIT` 固定（CI 会 checkout 到该 commit，构建可复现）；包版本为 `PKG_VERSION:=<日期>`（apk 要求版本以数字开头，日期制天然满足） |
 | LuCI 包 `luci-app-dae` | JS 版界面（`htdocs/` 客户端视图 + `root/usr/share/luci/menu.d/` + `rpcd/acl.d/`，与 luci-app-honk 同构），菜单显示名 **DAE**，不依赖 `luci-compat` |
-| `update-dae` 工作流 | 每日把上游 kdae 提交同步进 `dae/Makefile`（**不触发构建、也不发布 Release**） |
+| 版本维护 | **没有自动同步工作流**：`kdae` 是非默认分支，`on.schedule` 不生效，构建只能**手动 dispatch**；`dae/Makefile` 的 `PKG_VERSION` / `KDAE_COMMIT` 由人工更新 |
 
 ### 相对上游的调整
 
@@ -32,7 +32,7 @@ curl -fsSL "https://raw.githubusercontent.com/498777/luci-app-dae/kdae/Auto_Inst
 
 默认安装 `dae` + `luci-app-dae` + 中文语言包；`sh -s dae` 只装主程序。
 
-脚本行为：非 apk 体系直接退出；未发现内核 BTF 时给出提示；从 Release 拉取 `SHA256SUMS` 并对每个下载的 apk 做 sha256 校验（Release 未附校验文件时跳过并提示）；包内若仍声明 `vmlinux-btf`，会拆包剔除后再安装；安装完成后自动刷新 LuCI 缓存。其余参数（`--repo`、`--no-proxy`、`--gh-proxy`、`--keep-dep` 等）见脚本 `-h`。
+脚本行为：非 apk 体系直接退出；未发现内核 BTF 时给出提示；从 Release 拉取 `SHA256SUMS` 并对每个下载的 apk 做 sha256 校验（Release 未附校验文件时跳过并提示）；包内不再声明 `vmlinux-btf` 依赖——由 CI 的 Makefile 断言保证；安装完成后自动刷新 LuCI 缓存。其余参数（`--repo`、`--no-proxy`、`--gh-proxy`、`--keep-dep` 等）见脚本 `-h`。
 
 `geoip:` / `geosite:` 所需数据由 `v2ray-geoip` / `v2ray-geosite` 依赖带入，`/usr/share/dae` 的软链由安装脚本自动创建。
 
@@ -49,7 +49,7 @@ uci set dae.config.enabled=1 && uci commit dae
 
 - **BTF**：dae 是 eBPF CO-RE 程序，内核需开启 `CONFIG_DEBUG_INFO_BTF`（官方 25.x 的 x86_64 / armsr 默认开启）。未开启时 dae 可安装但无法启动；CI 有 Assert 步骤保证产物不含 `vmlinux-btf` 依赖。
 - **geo 数据**：dae 本体不依赖 geo 文件，只有规则引用 `geoip:` / `geosite:` 时才需要。默认配置含 geo 规则，安装官方 `v2ray-geoip` / `v2ray-geosite` 即可（文件位于 `/usr/share/v2ray/`，dae 默认 geo 目录自动兼容）。
-- **x86_64v3**：官方 OpenWrt / ImmortalWrt 没有 `x86_64_v3` 架构或 SDK，v3 只是同一 amd64 的 `GOAMD64` 档位（上游 kdae 亦如此）。本仓库包架构为 `x86_64`、二进制按 v3 编译，需要 CPU 支持 AVX2 / BMI（2013+ Intel Haswell、2015+ AMD Excavator）。老 CPU 上运行会触发 SIGILL，将 `dae/Makefile` 的 `export GOAMD64=v3` 改为 `v1` 重新编译即可规避；`aarch64` 不受影响。
+- **x86_64v3**：官方 OpenWrt / ImmortalWrt 没有 `x86_64_v3` 架构或 SDK，v3 只是同一 amd64 的 `GOAMD64` 档位（上游 kdae 亦如此）。本仓库包架构为 `x86_64`、二进制按 v3 编译，需要 CPU 支持 AVX2 / BMI（2013+ Intel Haswell、2015+ AMD Excavator）。老 CPU 上运行会触发 SIGILL，将 `.github/workflows/build-apk.yml` 中 build-binary 的 matrix `goamd64: v3` 改为 `v1` 后重新构建即可规避；`aarch64` 不受影响。
 
 ## LuCI 界面
 
@@ -74,9 +74,9 @@ uci set dae.config.enabled=1 && uci commit dae
 1. **预编译 job**：仿上游 kdae 的 `seed-build.yml`，在 ubuntu-22.04 + clang-15 / llvm-15 + Go 1.26 下交叉编译静态 `dae`（amd64 按 v3、aarch64 一份），产物作为 artifact 传给下一步。dae 核心**不在 OpenWrt SDK 内编译**（kdae 的 eBPF 生成与 SDK 的 bpf-headers 不兼容）。
 2. **打包 job**：OpenWrt SDK 只负责把预编译二进制装进 `dae` 包，并编译 luci / 语言包。
 
-**本分支 `kdae` 不自动构建**：`update-dae` 只把上游 kdae 提交同步进 `dae/Makefile`，不触发构建、也不发布 Release（避免与 `main` 线争用「只保留最近几个 Release」的名额）。需要发布 kdae 包时，在 **Actions → Build apk → Run workflow**，ref 选 `kdae`。
+**本分支 `kdae` 只能手动触发构建**：在 **Actions → Build apk → Run workflow**，ref 选 `kdae`。本分支不再有 `update-dae.yml`（该工作流只认 `DAE_RELEASE`，在 `kdae` 上会把版本写坏，已删除），且 `on.schedule` 在非默认分支不生效，所以没有“每日自动同步 + 自动构建”。
 
-**`kdae` 线的 Release tag 为 `dae-kdae_<日期>`**（与 `main` 线的 `dae_<日期>` 区分），包版本为 `dae-<YYYY.MM.DD>-rN`（同步日期 + 同日序号；apk 要求版本以数字开头，日期制天然满足）：dae 核心每架构一份，luci / 语言包各一份。每次发布前自动清空该 tag 的旧附件并附带 `SHA256SUMS`。保留策略：Release 保留最近 2 个，workflow run 与 artifact 各保留 2 天。
+**`kdae` 线的 Release tag 为 `dae-kdae_<日期>`**（与 `main` 线的 `dae_<日期>` 区分），包版本为 `dae-<YYYY.MM.DD>-rN`：dae 核心每架构一份，luci / 语言包各一份。每次发布前自动清空该 tag 的旧附件并附带 `SHA256SUMS`。保留策略：**按 tag 前缀各保留最近 2 个**（`dae-kdae_` 与 `dae_` 互不影响），workflow run 与 artifact 各保留 2 天。
 
 在完整源码树中手动编译 `luci-app-dae` 时，`dae` 包需要本地已存在预编译二进制：
 
@@ -99,11 +99,10 @@ dae/                               核心包（默认配置 / init；二进制�
   files/config.dae                 拆分配置入口（include config.d/*.dae）
   files/config.d/{dns,node,route}.dae   默认拆分模板
 luci-app-dae/                      LuCI 界面（htdocs 视图 + menu.d/acl.d + libexec 状态脚本 + po）
-.github/workflows/build-apk.yml    预编译 kdae 二进制 + 编译 apk 并发布 Release
-.github/workflows/update-dae.yml   每日同步上游 kdae 提交并自动 bump 版本
+.github/workflows/build-apk.yml    预编译 kdae 二进制 + 编译 apk 并发布 Release（本分支已删除 update-dae.yml）
 ```
 
-日志：`/var/log/dae/dae.log`，轮转由 dae 的 `--logfile-maxbackups` / `--maxsize` 控制，对应 uci 的 `dae.config.log_maxbackups` / `log_maxsize`。
+日志：`/var/log/dae/dae.log`，轮转由 dae 的 `--logfile-maxbackups` / `--logfile-maxsize` 控制，对应 uci 的 `dae.config.log_maxbackups` / `log_maxsize`。
 
 ## 第三方前端资源
 
