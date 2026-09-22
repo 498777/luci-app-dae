@@ -5,7 +5,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=dae
 PKG_VERSION:=2.1.1
 DAE_RELEASE:=v2.1.1
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 # 上游 dae release 预编译产物的 sha256（语义同 honk 的 PKG_HASH，只是 dae 的二进制由
 # .github/workflows/build-apk.yml 下载，所以校验也放在那里，变量名按 arch 区分）。
