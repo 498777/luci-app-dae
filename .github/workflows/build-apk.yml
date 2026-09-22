@@ -151,9 +151,6 @@ jobs:
           sudo -E apt-get update
           sudo -E apt-get install -y --no-install-recommends clang-15 llvm-15
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26'
 
       - name: Fetch kdae source
         env:
@@ -175,6 +172,18 @@ jobs:
           echo "checked out: $(git -C src rev-parse HEAD)"
           git -C src submodule update --init --recursive
 
+      # setup-go 必须排在 clone 之后：缓存 restore 用 cache-dependency-path 算 key，
+      # 而 kdae 源码是运行时 clone 到 src/ 的（仓库根没有 go.mod），放在前面则每次都
+      # 算不出 key → 缓存永远 miss → 每次全量下载依赖（CI 日志实测有
+      # "Restore cache failed: Dependencies file is not found ... Supported file pattern: go.mod"）。
+      # 顺带 setup-go 的缓存还含 ~/.cache/go-build，编译缓存也一并受益。
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache-dependency-path: |
+            src/go.sum
+            src/**/go.sum
+
       - name: Build dae
         env:
           GOOS: linux
@@ -192,9 +201,20 @@ jobs:
           STRIP: llvm-strip-15
           OUTPUT: /home/runner/work/dae-out
         run: |
+          set -euo pipefail
           cd src
-          make
-          ls -lh /home/runner/work/dae-out
+          # 拉模块偶发传输中断（实测 `stream error: stream ID N; INTERNAL_ERROR; received
+          # from peer`），Go 自带的请求级重试对这类流中断不够用，这里外层重跑 make。
+          ok=0
+          for i in 1 2 3; do
+            if make; then ok=1; break; fi
+            echo "::warning::make 失败（第 $i/3 次），10 秒后重试"
+            # 失败会留下半成品，且 make 按时间戳可能判定"已最新"而跳过重编 —— 先清空输出
+            rm -rf "${OUTPUT:?}"/*
+            sleep 10
+          done
+          [ "$ok" -eq 1 ] || { echo "::error::make 连续 3 次失败"; exit 1; }
+          ls -lh "$OUTPUT"
 
       - name: Upload binary
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
