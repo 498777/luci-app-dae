@@ -459,7 +459,9 @@ function editorPage(opts) {
 					'class': 'cbi-button cbi-button-action',
 					'type': 'button',
 					'click': function() {
-						return L.resolveDefault(fs.exec_direct(INITD, [ 'hot_reload' ]), null).then(function() {
+						/* 不能用 L.resolveDefault(..., null) 包住：它会把 rejection 吞成 null，
+						   下面的 .catch 永远进不去，重载失败也不会有任何提示 */
+						return fs.exec_direct(INITD, [ 'hot_reload' ]).then(function() {
 							ui.addNotification(null, E('p', _('Service reloaded successfully')), 'info');
 						}).catch(function(err) {
 							ui.addNotification(null, E('p', _('Reload failed: %s').format(err.message)), 'error');
@@ -501,10 +503,12 @@ function editorPage(opts) {
 		},
 
 		handleSaveApply: function(ev, mode) {
+			/* 保存与重载刻意解耦：重载由「重载服务 → 立即重载」单独触发。
+			   自动 hot_reload 在这里是有害的 —— native_api 等块的改动本来就会被 SIGHUP 拒绝
+			   （honk 文档："所有生效字段都要求重启；SIGHUP 拒绝其变更并保留当前 listener
+			   与配置代次"），自动触发只会让用户以为已经生效。 */
 			return this.handleSave(ev).then(function() {
-				return L.resolveDefault(fs.exec_direct(INITD, [ 'hot_reload' ]), null);
-			}).then(function() {
-				ui.addNotification(null, E('p', _('Configuration saved and hot-reloaded.')), 'info');
+				ui.addNotification(null, E('p', _('Configuration saved. Use "Reload Now" to apply it.')), 'info');
 			});
 		},
 
