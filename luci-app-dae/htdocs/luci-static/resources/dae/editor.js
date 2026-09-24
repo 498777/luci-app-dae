@@ -503,13 +503,12 @@ function editorPage(opts) {
 		},
 
 		handleSaveApply: function(ev, mode) {
+			/* 保存与重载刻意解耦：重载由「重载服务 → 立即重载」单独触发。
+			   自动 hot_reload 在这里是有害的 —— native_api 等块的改动本来就会被 SIGHUP 拒绝
+			   （honk 文档："所有生效字段都要求重启；SIGHUP 拒绝其变更并保留当前 listener
+			   与配置代次"），自动触发只会让用户以为已经生效。 */
 			return this.handleSave(ev).then(function() {
-				/* 同上：去掉 L.resolveDefault 包装，热重载失败要能看见 */
-				return fs.exec_direct(INITD, [ 'hot_reload' ]);
-			}).then(function() {
-				ui.addNotification(null, E('p', _('Configuration saved and hot-reloaded.')), 'info');
-			}).catch(function(err) {
-				ui.addNotification(null, E('p', _('Reload failed: %s').format(err && err.message ? err.message : err)), 'error');
+				ui.addNotification(null, E('p', _('Configuration saved. Use "Reload Now" to apply it.')), 'info');
 			});
 		},
 
