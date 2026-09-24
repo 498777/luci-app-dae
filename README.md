@@ -51,7 +51,7 @@ uci set dae.config.enabled=1 && uci commit dae
 
 ## LuCI 界面
 
-安装后 **服务 → DAE** 下为五个页签（JS 客户端渲染，`htdocs/luci-static/resources/view/dae/*.js`）。顶部是运行状态卡片（含重载按钮），每页带 CodeMirror 编辑器（`.dae` 语法高亮、代码折叠、括号匹配与自动补全、当前行高亮、格式化代码），底部为 Save / Save & Apply（保存并 `hot_reload`）/ Reset 三个按钮：
+安装后 **服务 → DAE** 下为五个页签（JS 客户端渲染，`htdocs/luci-static/resources/view/dae/*.js`）。顶部是运行状态卡片（每 3 秒刷新），下面一张卡片里依次是 uci 启用开关、服务动作按钮、代码编辑器。每页都带 CodeMirror（`.dae` 语法高亮、代码折叠、括号匹配与自动补全、当前行高亮、格式化代码），底部为 Save / Save & Apply / Reset 三个按钮：
 
 | 页签 | 编辑对象 |
 | --- | --- |
@@ -61,7 +61,13 @@ uci set dae.config.enabled=1 && uci commit dae
 | Routing Settings | `/etc/dae/config.d/route.dae` |
 | Logs | `/var/log/dae/dae.log`（实时日志，末尾 1000 行） |
 
-文件写入与 `hot_reload` 的执行权限由 `root/usr/share/rpcd/acl.d/luci-app-dae.json` 精确声明；运行状态由 `root/usr/libexec/dae-status` 提供（只放开该脚本的执行权限，不放开 `/proc`）。
+**保存与生效是刻意的两步**，不是一次操作：
+
+- Save / Save & Apply **只写盘**，并在提示里告诉你去点哪个按钮，**不会自动重载**。
+- 真正生效由配置卡片里的「重载服务 → 立即重载」（`hot_reload`）单独触发。按钮名由视图传入的 `reloadAction` / `reloadLabel` / `reloadNowLabel` 定制（本仓库各页均用默认值）。
+- Reset 只把编辑器内容重新读回磁盘版本，不写盘。
+
+文件写入与服务动作的执行权限由 `root/usr/share/rpcd/acl.d/luci-app-dae.json` 精确声明；运行状态由 `root/usr/libexec/dae-status` 提供（只放开该脚本的执行权限，不放开 `/proc`）。
 
 默认 `node.dae` 是占位模板，直接启用会被 `dae validate` 拒绝启动；需先在 Node 页签填入真实节点 / 订阅。
 
@@ -72,7 +78,7 @@ uci set dae.config.enabled=1 && uci commit dae
 1. **取核心二进制**：从上游 release 下载预编译静态 `dae`（x86_64 取 `dae-linux-x86_64_v3_avx2.tar.xz`，aarch64 取 `dae-linux-arm64.tar.xz`），解出 `usr/bin/dae` 放入 `dae/files/prebuilt/<arch>/dae`。dae 核心**不在 OpenWrt SDK 内编译**（上游的 eBPF 生成与 SDK 的 bpf-headers 不兼容）。
 2. **打包 job**：OpenWrt SDK 只负责把预编译二进制装进 `dae` 包，并编译 luci / 语言包。
 
-推送 `main`，或在 **Actions → Build apk → Run workflow** 手动触发（SDK 默认 `openwrt-25.12`）。
+推送 `main`，或在 **Actions → Build apk → Run workflow** 手动触发（SDK 默认 `openwrt-25.12`，`sdk` / `packages` 可覆盖）。
 
 Release 采用当天日期槽位 `dae_<日期>`，包版本为 `dae-<上游版本>-rN`（上游 tag 去掉 `v`，如同步 `v2.1.1` 则包版本为 `dae-2.1.1-r1`；apk 要求版本以数字开头）：dae 核心每架构一份，luci / 语言包各一份。每次发布前自动清空该 tag 的旧附件并附带 `SHA256SUMS`。保留策略：Release 保留最近 2 个，workflow run 与 artifact 各保留 2 天。
 
@@ -97,6 +103,7 @@ dae/                               核心包（默认配置 / init；二进制�
   files/config.dae                 拆分配置入口（include config.d/*.dae）
   files/config.d/{dns,node,route}.dae   默认拆分模板
 luci-app-dae/                      LuCI 界面（htdocs 视图 + menu.d/acl.d + libexec 状态脚本 + po）
+scripts/check-po.sh                po 与源码一致性检查（CI 的 lint-po 调用）
 .github/workflows/build-apk.yml    取上游 release 二进制 + 编译 apk 并发布 Release
 .github/workflows/update-dae.yml   每日检查上游 dae release 并自动 bump 版本
 ```
