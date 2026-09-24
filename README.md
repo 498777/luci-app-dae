@@ -14,18 +14,20 @@ OpenWrt 上 [dae](https://github.com/daeuniverse/dae)（eBPF 透明代理）的�
 | x86_64 | `dae-x86_64v3` | `GOAMD64=v3`（需 CPU 支持 AVX2 / BMI） |
 | aarch64 | `dae-aarch64` | 通用 arm64 |
 
-artifact 内的文件为 `dae-out/dae`，保留期 **30 天**。取哪个上游提交由 `dae/Makefile` 的 `KDAE_COMMIT`（完整 40 位 sha）固定，CI 会 checkout 到该 commit，构建可复现。
+artifact 内只有一个文件 `dae`（CI 会把上游产物改名后再上传，见工作流 `Stage binary as "dae"`）。保留期 **30 天**。取哪个上游提交由 `dae/Makefile` 的 `KDAE_COMMIT`（完整 40 位 sha）固定，CI 会 checkout 到该 commit，构建可复现。
 
 ## 取用二进制
 
-在 **Actions → Build dae binary (kdae)** 里选最近一次 run，下载对应架构的 artifact，解出 `dae` 后放到目标机的 `/usr/bin/dae` 并 `chmod 755`。
+在 **Actions → Build dae binary (kdae)** 里选最近一次 run，下载对应架构的 artifact，把里面的 `dae` 放到目标机的 `/usr/bin/dae` 并 `chmod 755`。
 
-本机装有 `gh` 时可用命令行：
+本机装有 `gh` 时可用命令行（`gh run download -n <name>` 会解到同名目录）：
 
 ```sh
 gh run download -R 498777/luci-app-dae -n dae-x86_64v3
-install -m 755 dae-out/dae /usr/bin/dae
+install -m 755 dae-x86_64v3/dae /usr/bin/dae
 ```
+
+该二进制是**静态链接的 ELF**，除内核 BTF 外无运行时依赖。注意 x86_64 版本按 `GOAMD64=v3` 编译，需 CPU 支持 AVX2 / BMI，否则运行会 `Illegal instruction`（见下节）。
 
 手工部署所需的 `init` 脚本与默认配置仍在 `dae/files/`（`dae.init`、`dae.config`、`config.dae`、`config.d/{dns,node,route}.dae`），本分支不再打包，仅作素材。
 

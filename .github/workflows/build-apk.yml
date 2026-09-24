@@ -74,6 +74,10 @@ jobs:
     # 本 job 只上传 artifact（无 checkout），所以只需要 actions: write
     permissions:
       actions: write
+    env:
+      # 上游 make 的产物路径。Build 步骤写它、Stage 步骤读它，只在一处定义，
+      # 避免两边各写一份后改一处漏一处。
+      OUTPUT: /home/runner/work/dae-out
     strategy:
       fail-fast: false
       matrix:
@@ -137,7 +141,6 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
           CLANG: clang-15
           STRIP: llvm-strip-15
-          OUTPUT: /home/runner/work/dae-out
         run: |
           set -euo pipefail
           cd src
@@ -147,18 +150,36 @@ jobs:
           for i in 1 2 3; do
             if make; then ok=1; break; fi
             echo "::warning::make 失败（第 $i/3 次），10 秒后重试"
-            # 失败会留下半成品，且 make 按时间戳可能判定"已最新"而跳过重编 —— 先清空输出
-            rm -rf "${OUTPUT:?}"/*
+            # 清掉上次的产物，避免 make 按时间戳判定"已最新"而跳过重编、把半成品上传。
+            # ⚠️ 不能写 `rm -rf "$OUTPUT"/*` —— 实测 $OUTPUT 是**文件**（.../dae-out），
+            # 通配符不展开，rm -f 对不存在的路径静默返回 0，等于什么都没清。
+            if [ -d "$OUTPUT" ]; then
+              rm -rf "${OUTPUT:?}"/*
+            else
+              rm -f "${OUTPUT:?}"
+            fi
             sleep 10
           done
           [ "$ok" -eq 1 ] || { echo "::error::make 连续 3 次失败"; exit 1; }
           ls -lh "$OUTPUT"
 
+      - name: Stage binary as "dae"
+        run: |
+          set -euo pipefail
+          # 上游 make 把产物写在 $OUTPUT，而 upload-artifact 用该路径的 **basename**
+          # 作为包内文件名 —— 于是 artifact 里的文件会叫 "dae-out"，使用者下载后
+          # 还得自己改名才能用。这里复制一份规范文件名再上传（原文件保持不动）。
+          [ -f "$OUTPUT" ] || { echo "::error::未找到构建产物 $OUTPUT"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/artifact"
+          install -m 755 "$OUTPUT" "$RUNNER_TEMP/artifact/dae"
+          ls -lh "$RUNNER_TEMP/artifact"
+
       - name: Upload binary
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dae-${{ matrix.label }}
-          path: /home/runner/work/dae-out
+          # 上传暂存目录（内含 dae），而非上游产物路径 —— 保证 artifact 内文件名是 dae
+          path: ${{ runner.temp }}/artifact
           if-no-files-found: error
           # 本线不再发 Release，二进制只靠 artifact 交付 → 保留期给足，便于随时取用
           retention-days: 30
