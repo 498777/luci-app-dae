@@ -12,9 +12,10 @@ PKG_LICENSE_FILE:=LICENSE
 
 include $(INCLUDE_DIR)/package.mk
 
-# dae 核心由 GitHub Actions 的预编译 job 产出（仿 kdae seed-build：ubuntu + clang-15 +
-# Go 1.26 + submodule 头文件交叉编译静态二进制），见 .github/workflows/build-apk.yml。
-# 打包时直接使用 dae/files/prebuilt/<arch>/dae，不在 OpenWrt SDK 内编译。
+# 本分支只用本文件记录版本与上游提交（CI 的 prepare job 从这里读 PKG_VERSION /
+# PKG_RELEASE / KDAE_COMMIT）。核心二进制由 GitHub Actions 直接交叉编译并作为
+# artifact 交付，不再打包 apk、不再发 Release —— 见 .github/workflows/build-apk.yml。
+# 下方 define 与 dae/files/ 保留作参考与手工部署素材，本分支不再构建。
 
 define Package/dae
   SECTION:=net

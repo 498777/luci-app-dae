@@ -1,42 +1,28 @@
-name: Build apk
+name: Build dae binary (kdae)
 
+# 本分支只产出 dae 核心的静态二进制（CI artifact）：不再编译 apk、不再发 Release、不含 luci 包。
+# ⚠️ 文件名必须保持 build-apk.yml —— GitHub 要求 workflow 文件存在于**默认分支**才会出现在
+#    Actions 列表里并可 workflow_dispatch。本分支靠与 main「同路径」拿到手动触发入口：
+#    dispatch 时 ref 选 kdae，实际执行的就是本文件。改名会导致 kdae 无法手动触发。
 on:
   workflow_dispatch:
-    inputs:
-      sdk:
-        description: 'OpenWrt SDK 分支（25.x 起产出 apk）'
-        required: false
-        default: openwrt-25.12
-      packages:
-        description: '要编译的包，空格分隔'
-        required: false
-        default: 'luci-app-dae'
-      force:
-        description: '忽略变更检测，强制编译并发布'
-        required: false
-        default: false
-        type: boolean
   push:
     branches:
       - kdae
-  # PR 只做“能否编译/断言是否通过”的校验，release job 由 event 门控跳过（见 release）
-  pull_request:
-    branches:
-      - kdae
-# 同一 ref 只允许一个构建/发布流程，避免并发 run 同时进出 release job 互删 Release 附件
+    paths:
+      # 只在真正影响二进制时触发。原先基于「上一次 Release note」的 Change guard 已移除：
+      # 本线不再发 Release，没有可比对的记录，用 paths 过滤更直接。
+      - 'dae/Makefile'
+      - '.github/workflows/build-apk.yml'
+
+# 同一 ref 只允许一个构建流程
 concurrency:
-  group: build-apk-dae-kdae-${{ github.ref }}
+  group: build-kdae-binary-${{ github.ref }}
   cancel-in-progress: true
 
-# 默认收敛到最小权限，需要写权限的 job 各自单独提升（见 build-binary / build / release）
+# 默认收敛到最小权限，需要写权限的 job 单独提升（见 build-binary）
 permissions:
   contents: read
-
-env:
-  # 本线 Release tag 前缀（main 线为 dae_，kdae 分支为 dae-kdae_）。
-  # gh release list 是全局的，Change guard 与清理都必须按此前缀过滤，
-  # 否则两条线会互相取到对方的 Release / 互相删对方的 Release。
-  RELEASE_PREFIX: dae-kdae_
 
 jobs:
   prepare:
@@ -50,13 +36,7 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.meta.outputs.version }}
-      release_tag: ${{ steps.meta.outputs.release_tag }}
-      release_name: ${{ steps.meta.outputs.release_name }}
-      sdk: ${{ steps.meta.outputs.sdk }}
-      packages: ${{ steps.meta.outputs.packages }}
-      luci_version: ${{ steps.meta.outputs.luci_version }}
       kdae_commit: ${{ steps.meta.outputs.kdae_commit }}
-      should_build: ${{ steps.guard.outputs.should_build }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -81,58 +61,16 @@ jobs:
             echo "::error::KDAE_COMMIT 必须是完整 40 位 sha（当前长度 ${#kdae_commit}）"
             exit 1
           fi
-          sdk="${{ inputs.sdk || 'openwrt-25.12' }}"
-          packages="${{ inputs.packages || 'luci-app-dae' }}"
-
           version="${pkg_version}-r${pkg_release}"
-          echo "version=${version}"                >> "$GITHUB_OUTPUT"
-          rel_date=$(date -u +%Y.%m.%d)
-          echo "release_tag=dae-kdae_${rel_date}"   >> "$GITHUB_OUTPUT"
-          echo "release_name=dae-kdae_${rel_date}"  >> "$GITHUB_OUTPUT"
-          echo "sdk=${sdk}"                        >> "$GITHUB_OUTPUT"
-          echo "packages=${packages}"              >> "$GITHUB_OUTPUT"
-          echo "kdae_commit=${kdae_commit}"        >> "$GITHUB_OUTPUT"
-          luci_version="$(grep '^PKG_VERSION:=' luci-app-dae/Makefile | head -n 1 | cut -d= -f2)-r$(grep '^PKG_RELEASE:=' luci-app-dae/Makefile | head -n 1 | cut -d= -f2)"
-          echo "luci_version=${luci_version}"      >> "$GITHUB_OUTPUT"
+          echo "version=${version}"            >> "$GITHUB_OUTPUT"
+          echo "kdae_commit=${kdae_commit}"    >> "$GITHUB_OUTPUT"
 
-          echo "Version: ${version} / KDAE_COMMIT: ${kdae_commit} / SDK: ${sdk} / Packages: ${packages}"
-
-      - name: Change guard
-        id: guard
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          ver="${{ steps.meta.outputs.version }}"
-          luci="${{ steps.meta.outputs.luci_version }}"
-          if [ "${{ inputs.force }}" = "true" ]; then
-            echo "手动强制构建（force=true）"
-            echo "should_build=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # 只看本线（RELEASE_PREFIX 前缀）的 Release：gh release list 是全局的，
-          # 不过滤会把另一条线的 dae_* / dae-kdae_* 当成“最近一次 Release”而误判“无变化”
-          latest_tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName --jq '.[].tagName' \
-            | grep -E "^${RELEASE_PREFIX}" | sort -V | tail -n 1 || echo "")
-          last=""
-          if [ -n "$latest_tag" ]; then
-            last=$(gh release view "$latest_tag" --repo "$GITHUB_REPOSITORY" --json body --jq '.body // ""' || echo "")
-          fi
-          if printf '%s' "$last" | grep -q "version:${ver}" && printf '%s' "$last" | grep -q "luci:${luci}"; then
-            echo "无变化（core ${ver} / luci ${luci} 与最近一次 Release 相同）：跳过编译与发布"
-            echo "should_build=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "检测到变化（core ${ver} / luci ${luci}）：继续编译"
-            echo "should_build=true" >> "$GITHUB_OUTPUT"
-          fi
-
+          echo "Version: ${version} / KDAE_COMMIT: ${kdae_commit}"
 
   build-binary:
     name: Build binary ${{ matrix.label }}
     runs-on: ubuntu-22.04
     needs: prepare
-    if: needs.prepare.outputs.should_build == 'true'
     # 本 job 只上传 artifact（无 checkout），所以只需要 actions: write
     permissions:
       actions: write
@@ -222,252 +160,6 @@ jobs:
           name: dae-${{ matrix.label }}
           path: /home/runner/work/dae-out
           if-no-files-found: error
-          retention-days: 1
+          # 本线不再发 Release，二进制只靠 artifact 交付 → 保留期给足，便于随时取用
+          retention-days: 30
 
-  build:
-    name: Build apk ${{ matrix.short }}
-    runs-on: ubuntu-latest
-    needs:
-      - prepare
-      - build-binary
-    if: needs.prepare.outputs.should_build == 'true'
-    # contents: read 用于 checkout；actions: write 用于 upload-artifact
-    # （限制 permissions 后 artifact 上传需要该 scope，否则 403）
-    permissions:
-      contents: read
-      actions: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            short: x86_64v3
-            binlabel: x86_64v3
-          - arch: aarch64_generic
-            short: aarch64
-            binlabel: aarch64
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Fetch prebuilt binary
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: dae-${{ matrix.binlabel }}
-          path: bin-tmp
-
-      - name: Place binary into package
-        run: |
-          mkdir -p dae/files/prebuilt/${{ matrix.binlabel }}
-          cp bin-tmp/dae-out dae/files/prebuilt/${{ matrix.binlabel }}/dae
-          chmod 755 dae/files/prebuilt/${{ matrix.binlabel }}/dae
-          ls -l dae/files/prebuilt/${{ matrix.binlabel }}/dae
-
-      - name: Build packages
-        uses: sbwml/openwrt-gh-action-sdk@a5b2472e626ba279c75c77f82a4e5385303f9561 # go1.26
-        env:
-          ARCH: ${{ matrix.arch }}-${{ needs.prepare.outputs.sdk }}
-          FEEDNAME: packages_ci
-          PACKAGES: ${{ needs.prepare.outputs.packages }}
-          NO_REFRESH_CHECK: true
-          NO_SHFMT_CHECK: true
-          V: s
-
-      - name: Assert no vmlinux-btf dependency
-        shell: bash
-        run: |
-          set -euo pipefail
-          # 依赖在包 Makefile 里声明，这里对仓库内所有 tracked Makefile 做断言。
-          #
-          # 为什么不按产物 apk 校验：OpenWrt 25.x 的 apk 是 apk-tools v3 的 ADB 容器格式
-          # （文件头 magic `ADBd`，既不是 gzip 也不是 tar，元数据与载荷都经过压缩/编码，
-          # 连包名、`htdocs` 这类字符串都无法在包里明文搜到）。
-          # 原先的 `gzip -dc "$f" | tar -xO .PKGINFO` 只会得到空输出并静默通过，断言形同虚设。
-          # 若要真正做产物级校验，需在 SDK 容器内用 apk-tools，例如：
-          #   docker run --rm -v "$PWD:/artifacts" -w /home/build/sdk sdk \
-          #     ./staging_dir/host/bin/apk adbdump \
-          #     /artifacts/bin/packages/${{ matrix.arch }}/packages_ci/<pkg>.apk
-          shopt -s nullglob
-          found=0
-          checked=0
-          while IFS= read -r mk; do
-            checked=$((checked + 1))
-            if grep -nE '[+:]vmlinux-btf' "$mk"; then
-              echo "::error file=$mk::仍然声明 vmlinux-btf 依赖"
-              found=1
-            fi
-          done < <(git ls-files | grep -E '(^|/)Makefile$')
-          if [ "$checked" -eq 0 ]; then
-            echo "::error::没有找到任何 Makefile，断言未生效"
-            exit 1
-          fi
-          apks=(bin/packages/${{ matrix.arch }}/packages_ci/*.apk)
-          if [ "${#apks[@]}" -eq 0 ]; then
-            echo "::error::没有产出 apk，断言未生效"
-            exit 1
-          fi
-          echo "✓ 已检查 $checked 个 Makefile，均未声明 vmlinux-btf；产物 apk ${#apks[@]} 个："
-          for f in "${apks[@]}"; do
-            echo "    $(basename "$f")  $(( $(stat -c%s "$f") / 1024 )) KB"
-          done
-          if [ "$found" -ne 0 ]; then
-            echo "kdae/dae 的 Makefile 依赖没有清理干净，终止发布"
-            exit 1
-          fi
-
-      - name: Upload build artifacts
-        # PR（含 dependabot）run 的 token 是只读的，artifact 上传必然 403；PR 只验证能编译
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: apk-${{ matrix.short }}
-          path: bin/packages/${{ matrix.arch }}/packages_ci/*.apk
-          if-no-files-found: error
-          retention-days: 7
-
-  release:
-    name: Publish release
-    runs-on: ubuntu-latest
-    needs:
-      - prepare
-      - build
-    # PR 只构建不发布；仅本 job 提升写权限（contents: 发 Release / actions: 清理 workflow run）
-    if: github.event_name != 'pull_request' && needs.prepare.outputs.should_build == 'true'
-    permissions:
-      contents: write
-      actions: write
-    steps:
-      - name: Download apk artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: apk-*
-          path: release-dist
-
-      - name: Assemble release assets
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p rel
-          for d in release-dist/*/; do
-            label="${d#release-dist/}"
-            label="${label%/}"
-            label="${label#apk-}"
-            for f in "$d"*.apk; do
-              [ -e "$f" ] || continue
-              name=$(basename "$f")
-              case "$name" in
-                dae-*)
-                  cp "$f" "rel/${name%.apk}-${label}.apk"
-                  ;;
-                *)
-                  [ "$label" = "x86_64v3" ] && cp "$f" "rel/$name"
-                  ;;
-              esac
-            done
-          done
-          echo "=== release assets ==="
-          ls -1 rel
-
-      - name: Generate SHA256SUMS
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd rel
-          count=$(ls -1 ./*.apk 2>/dev/null | wc -l)
-          [ "$count" -gt 0 ] || { echo "::error::rel/ 中没有 apk，无法生成校验文件"; exit 1; }
-          for f in *.apk; do sha256sum "$f"; done > SHA256SUMS
-          echo "=== SHA256SUMS ==="
-          cat SHA256SUMS
-
-      - name: Replace old release assets
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          tag="${{ needs.prepare.outputs.release_tag }}"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            assets=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name')
-            if [ -n "$assets" ]; then
-              for a in $assets; do
-                echo "remove old asset: $a"
-                gh release delete-asset "$tag" --repo "$GITHUB_REPOSITORY" --yes "$a"
-              done
-            fi
-          fi
-
-      - name: Create or update GitHub release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          tag="${{ needs.prepare.outputs.release_tag }}"
-          title="${{ needs.prepare.outputs.release_name }}"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" rel/* --repo "$GITHUB_REPOSITORY" --clobber
-            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes "version:${{ needs.prepare.outputs.version }} luci:${{ needs.prepare.outputs.luci_version }} Automated build of ${title}"
-          else
-            gh release create "$tag" rel/* --repo "$GITHUB_REPOSITORY" --title "$title" --notes "version:${{ needs.prepare.outputs.version }} luci:${{ needs.prepare.outputs.luci_version }} Automated build of ${title}"
-          fi
-
-      - name: Delete old releases of this line (keep 2)
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          # ophub 的 releases_keep_latest 是全局计数，两条线（dae_ / dae-kdae_）会互相删对方的
-          # Release，所以这里自己按前缀清理：取本线 Release，按创建时间倒序排列后从第 3 个开始
-          # 删除（即删除第 3 个及更早的）；`gh release delete --cleanup-tag` 会连 tag 一起删。
-          mapfile -t old < <(
-            gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 \
-              --json tagName,createdAt --jq '.[] | [.createdAt, .tagName] | @tsv' \
-            | awk -F'\t' -v p="${RELEASE_PREFIX}" 'index($2, p) == 1' \
-            | sort -k1,1r \
-            | tail -n +3 \
-            | cut -f2
-          )
-          if [ "${#old[@]}" -eq 0 ]; then
-            echo "本线（${RELEASE_PREFIX}）Release 不超过 2 个，无需清理"
-            exit 0
-          fi
-          for t in "${old[@]}"; do
-            echo "delete release + tag: $t"
-            gh release delete "$t" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
-          done
-        continue-on-error: true
-
-      - name: Delete old workflow runs
-        # 只清理 workflow run 记录（delete_releases 用默认值 false），
-        # Release / tag 的清理已由上一步按前缀自行处理
-        uses: ophub/delete-releases-workflows@9c4138644d440d66f145e5ab03a98f03b5cbf2b0 # main (2026-06-17；该 commit 无对应 tag，v0.1.0 更早)
-        with:
-          delete_releases: false
-          delete_tags: false
-          delete_workflows: true
-          workflows_keep_day: 2
-          gh_token: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-
-      - name: Cleanup old action artifacts
-        uses: c-hive/gha-remove-artifacts@62c2fbea931baa7dd4a6b73ea5a799984a818f61 # v1.8.0
-        with:
-          age: '2 days'
-          skip-recent: 2
-        continue-on-error: true
-
-  lint-po:
-    # po 与源码一致性：po 里的实体 msgid 必须能在 htdocs/ root/ 等源码中找到，
-    # 防止界面文案改了、po 里却留下永不被引用的死条目（脚本见 scripts/check-po.sh）
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Check po consistency
-        run: sh scripts/check-po.sh .
